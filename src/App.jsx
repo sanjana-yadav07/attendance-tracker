@@ -2,6 +2,7 @@ import React, { useState, useEffect } from "react";
 
 const DAYS = ["Mon", "Tue", "Wed", "Thu", "Fri"];
 const FULL_DAY = { Mon: "Monday", Tue: "Tuesday", Wed: "Wednesday", Thu: "Thursday", Fri: "Friday" };
+const WEEKDAY_INDEX_TO_KEY = { 1: "Mon", 2: "Tue", 3: "Wed", 4: "Thu", 5: "Fri" }; // JS getDay(): 0=Sun
 const STORAGE_KEY = "attendance-tracker-v2";
 
 const COLORS = {
@@ -23,6 +24,17 @@ const COLORS = {
 
 const uid = () => Math.random().toString(36).slice(2, 10);
 
+// local YYYY-MM-DD (avoids UTC offset issues from toISOString)
+function toDateKey(date) {
+  const y = date.getFullYear();
+  const m = String(date.getMonth() + 1).padStart(2, "0");
+  const d = String(date.getDate()).padStart(2, "0");
+  return `${y}-${m}-${d}`;
+}
+function todayKey() {
+  return toDateKey(new Date());
+}
+
 function emptyData() {
   const timetable = {};
   DAYS.forEach((d) => (timetable[d] = []));
@@ -31,7 +43,7 @@ function emptyData() {
     name: `Subject ${i + 1}`,
     todos: [],
   }));
-  return { timetable, assignments: [], subjects };
+  return { timetable, assignments: [], subjects, calendarLog: {} };
 }
 
 function FontStyles() {
@@ -66,6 +78,16 @@ function FontStyles() {
       .att-scroll::-webkit-scrollbar-thumb { background: ${COLORS.borderStrong}; border-radius: 4px; }
       .att-bar-track { height: 6px; border-radius: 4px; background: ${COLORS.surface2}; overflow: hidden; }
       .att-bar-fill { height: 100%; border-radius: 4px; transition: width 0.25s ease; }
+      .att-cal-cell {
+        aspect-ratio: 1;
+        display: flex; align-items: center; justify-content: center;
+        border-radius: 8px;
+        font-size: 12.5px;
+        cursor: pointer;
+        border: 1px solid transparent;
+        position: relative;
+      }
+      .att-cal-cell:hover { border-color: ${COLORS.borderStrong}; }
       @media (max-width: 640px) {
         .att-navlabel { display: none; }
       }
@@ -91,6 +113,20 @@ function IconPlus({ color = COLORS.bg }) {
   return (
     <svg width="14" height="14" viewBox="0 0 24 24" fill="none">
       <path d="M12 5v14M5 12h14" stroke={color} strokeWidth="2.5" strokeLinecap="round" />
+    </svg>
+  );
+}
+function IconChevronLeft({ color = COLORS.textMuted }) {
+  return (
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none">
+      <path d="M15 18l-6-6 6-6" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  );
+}
+function IconChevronRight({ color = COLORS.textMuted }) {
+  return (
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none">
+      <path d="M9 18l6-6-6-6" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
     </svg>
   );
 }
@@ -121,6 +157,7 @@ export default function App() {
   const [loaded, setLoaded] = useState(false);
   const [tab, setTab] = useState("overview");
   const [activeDay, setActiveDay] = useState("Mon");
+  const [selectedDate, setSelectedDate] = useState(todayKey());
 
   useEffect(() => {
     try {
@@ -141,6 +178,7 @@ export default function App() {
           });
         }
         if (Array.isArray(parsed.subjects) && parsed.subjects.length) merged.subjects = parsed.subjects;
+        if (parsed.calendarLog && typeof parsed.calendarLog === "object") merged.calendarLog = parsed.calendarLog;
         setData(merged);
       }
     } catch (e) {
@@ -183,6 +221,15 @@ export default function App() {
       ...d,
       timetable: { ...d.timetable, [day]: d.timetable[day].filter((c) => c.id !== id) },
     }));
+  };
+
+  // ---- calendar ops (per-date overrides, independent of the weekly toggle) ----
+  const toggleCalendarClass = (dateKey, classId) => {
+    setData((d) => {
+      const dayLog = { ...(d.calendarLog[dateKey] || {}) };
+      dayLog[classId] = !dayLog[classId];
+      return { ...d, calendarLog: { ...d.calendarLog, [dateKey]: dayLog } };
+    });
   };
 
   // ---- assignment ops ----
@@ -248,8 +295,6 @@ export default function App() {
   const totalTodos = data.subjects.reduce((s, sub) => s + sub.todos.length, 0);
   const doneTodos = data.subjects.reduce((s, sub) => s + sub.todos.filter((t) => t.done).length, 0);
 
-  // per-subject breakdown: matches class.subject text (case-insensitive) to subject.name,
-  // plus falls back to grouping by raw class subject text if it doesn't match any of the 6 cards
   const subjectStats = data.subjects.map((s) => {
     const nameLower = s.name.trim().toLowerCase();
     const classes = allClasses.filter((c) => c.subject.trim().toLowerCase() === nameLower);
@@ -301,6 +346,7 @@ export default function App() {
         <div style={{ maxWidth: 920, margin: "0 auto", display: "flex", gap: 4, padding: "0 20px", overflowX: "auto" }}>
           <NavTab active={tab === "overview"} onClick={() => setTab("overview")} label="Overview" />
           <NavTab active={tab === "timetable"} onClick={() => setTab("timetable")} label="Timetable" badge={`${overallAttended}/${overallTotal}`} />
+          <NavTab active={tab === "calendar"} onClick={() => setTab("calendar")} label="Calendar" />
           <NavTab active={tab === "assignments"} onClick={() => setTab("assignments")} label="Assignments" badge={pendingAssignments ? String(pendingAssignments) : null} />
           <NavTab active={tab === "subjects"} onClick={() => setTab("subjects")} label="Subject todos" badge={`${doneTodos}/${totalTodos}`} />
         </div>
@@ -330,6 +376,15 @@ export default function App() {
             onAdd={(time, subject) => addClass(activeDay, time, subject)}
             onToggle={(id) => toggleClass(activeDay, id)}
             onDelete={(id) => deleteClass(activeDay, id)}
+          />
+        )}
+        {tab === "calendar" && (
+          <CalendarTab
+            timetable={data.timetable}
+            calendarLog={data.calendarLog}
+            selectedDate={selectedDate}
+            setSelectedDate={setSelectedDate}
+            onToggleClass={toggleCalendarClass}
           />
         )}
         {tab === "assignments" && (
@@ -539,6 +594,179 @@ function TimetableTab({ days, activeDay, setActiveDay, classes, dayTotal, dayAtt
           </button>
         </div>
       </Card>
+    </div>
+  );
+}
+
+// ---------------- Calendar Tab ----------------
+
+function CalendarTab({ timetable, calendarLog, selectedDate, setSelectedDate, onToggleClass }) {
+  // selectedDate is a "YYYY-MM-DD" string. Keep a separate cursor for which month is shown.
+  const initial = selectedDate ? new Date(selectedDate + "T00:00:00") : new Date();
+  const [viewYear, setViewYear] = useState(initial.getFullYear());
+  const [viewMonth, setViewMonth] = useState(initial.getMonth()); // 0-indexed
+
+  const monthLabel = new Date(viewYear, viewMonth, 1).toLocaleDateString("en-US", { month: "long", year: "numeric" });
+  const firstOfMonth = new Date(viewYear, viewMonth, 1);
+  const startOffset = firstOfMonth.getDay(); // 0=Sun
+  const daysInMonth = new Date(viewYear, viewMonth + 1, 0).getDate();
+
+  const cells = [];
+  for (let i = 0; i < startOffset; i++) cells.push(null);
+  for (let day = 1; day <= daysInMonth; day++) cells.push(day);
+
+  const goPrevMonth = () => {
+    if (viewMonth === 0) {
+      setViewMonth(11);
+      setViewYear((y) => y - 1);
+    } else {
+      setViewMonth((m) => m - 1);
+    }
+  };
+  const goNextMonth = () => {
+    if (viewMonth === 11) {
+      setViewMonth(0);
+      setViewYear((y) => y + 1);
+    } else {
+      setViewMonth((m) => m + 1);
+    }
+  };
+
+  const selDateObj = new Date(selectedDate + "T00:00:00");
+  const selWeekdayIdx = selDateObj.getDay();
+  const selDayKey = WEEKDAY_INDEX_TO_KEY[selWeekdayIdx]; // undefined for Sat/Sun
+  const classesForSelected = selDayKey ? timetable[selDayKey] || [] : [];
+  const logForSelected = calendarLog[selectedDate] || {};
+  const attendedCount = classesForSelected.filter((c) => logForSelected[c.id]).length;
+
+  return (
+    <div style={{ display: "grid", gridTemplateColumns: "minmax(280px, 380px) 1fr", gap: 20 }}>
+      <Card>
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 14 }}>
+          <button onClick={goPrevMonth} style={{ background: COLORS.surface2, border: `1px solid ${COLORS.border}`, borderRadius: 8, padding: 6, display: "flex" }} aria-label="Previous month">
+            <IconChevronLeft />
+          </button>
+          <h3 style={{ fontFamily: "'Fraunces', serif", fontWeight: 600, fontSize: 15, margin: 0 }}>{monthLabel}</h3>
+          <button onClick={goNextMonth} style={{ background: COLORS.surface2, border: `1px solid ${COLORS.border}`, borderRadius: 8, padding: 6, display: "flex" }} aria-label="Next month">
+            <IconChevronRight />
+          </button>
+        </div>
+
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(7, 1fr)", gap: 4, marginBottom: 6 }}>
+          {["S", "M", "T", "W", "T", "F", "S"].map((d, i) => (
+            <div key={i} style={{ textAlign: "center", fontSize: 11, color: COLORS.textFaint, fontFamily: "'IBM Plex Mono', monospace" }}>{d}</div>
+          ))}
+        </div>
+
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(7, 1fr)", gap: 4 }}>
+          {cells.map((day, i) => {
+            if (day === null) return <div key={i} />;
+            const dateObj = new Date(viewYear, viewMonth, day);
+            const dateKey = toDateKey(dateObj);
+            const weekdayIdx = dateObj.getDay();
+            const dayKey = WEEKDAY_INDEX_TO_KEY[weekdayIdx];
+            const hasClasses = dayKey && (timetable[dayKey] || []).length > 0;
+            const log = calendarLog[dateKey] || {};
+            const dayClassesCount = hasClasses ? timetable[dayKey].length : 0;
+            const dayAttendedCount = hasClasses ? timetable[dayKey].filter((c) => log[c.id]).length : 0;
+            const isSelected = dateKey === selectedDate;
+            const isToday = dateKey === todayKey();
+
+            let dotColor = null;
+            if (hasClasses) {
+              dotColor = dayAttendedCount === dayClassesCount ? COLORS.present : dayAttendedCount > 0 ? COLORS.accent : COLORS.textFaint;
+            }
+
+            return (
+              <div
+                key={i}
+                className="att-cal-cell"
+                onClick={() => setSelectedDate(dateKey)}
+                style={{
+                  background: isSelected ? COLORS.accentDim : "transparent",
+                  border: isSelected ? `1px solid ${COLORS.accent}` : isToday ? `1px solid ${COLORS.borderStrong}` : "1px solid transparent",
+                  color: isSelected ? COLORS.accent : COLORS.text,
+                  fontWeight: isToday ? 600 : 400,
+                }}
+              >
+                {day}
+                {dotColor && (
+                  <span style={{ position: "absolute", bottom: 4, width: 4, height: 4, borderRadius: "50%", background: dotColor }} />
+                )}
+              </div>
+            );
+          })}
+        </div>
+
+        <div style={{ display: "flex", gap: 14, marginTop: 14, fontSize: 11, color: COLORS.textFaint, flexWrap: "wrap" }}>
+          <LegendDot color={COLORS.present} label="fully attended" />
+          <LegendDot color={COLORS.accent} label="partial" />
+          <LegendDot color={COLORS.textFaint} label="none marked" />
+        </div>
+      </Card>
+
+      <Card style={{ borderLeft: `3px solid ${COLORS.accent}`, borderRadius: "6px 14px 14px 6px" }}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 4, flexWrap: "wrap", gap: 6 }}>
+          <h2 style={{ fontFamily: "'Fraunces', serif", fontWeight: 600, fontSize: 18, margin: 0 }}>
+            <Highlight>{selDateObj.toLocaleDateString("en-US", { weekday: "long", month: "long", day: "numeric" })}</Highlight>
+          </h2>
+          {classesForSelected.length > 0 && (
+            <span style={{ fontFamily: "'IBM Plex Mono', monospace", fontSize: 12, color: COLORS.textMuted }}>{attendedCount}/{classesForSelected.length} attended</span>
+          )}
+        </div>
+
+        {!selDayKey && (
+          <div style={{ color: COLORS.textFaint, fontSize: 13, padding: "16px 0" }}>
+            Weekend — no classes scheduled in the timetable.
+          </div>
+        )}
+
+        {selDayKey && classesForSelected.length === 0 && (
+          <div style={{ color: COLORS.textFaint, fontSize: 13, padding: "16px 0" }}>
+            No {FULL_DAY[selDayKey]} classes in your timetable yet. Add some in the Timetable tab and they'll show up here for every {FULL_DAY[selDayKey]}.
+          </div>
+        )}
+
+        {classesForSelected.length > 0 && (
+          <div style={{ display: "flex", flexDirection: "column", gap: 8, marginTop: 14 }}>
+            {classesForSelected.map((c) => {
+              const checked = !!logForSelected[c.id];
+              return (
+                <div
+                  key={c.id}
+                  className="att-row"
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    gap: 12,
+                    background: checked ? COLORS.presentDim : COLORS.surface2,
+                    border: `1px solid ${checked ? COLORS.present + "55" : COLORS.border}`,
+                    borderRadius: 10,
+                    padding: "10px 12px",
+                  }}
+                >
+                  <Checkbox checked={checked} onClick={() => onToggleClass(selectedDate, c.id)} />
+                  <span style={{ fontFamily: "'IBM Plex Mono', monospace", fontSize: 12, color: COLORS.textMuted, minWidth: 96 }}>{c.time}</span>
+                  <span style={{ fontSize: 14, fontWeight: 500, flex: 1 }}>{c.subject}</span>
+                </div>
+              );
+            })}
+          </div>
+        )}
+
+        <div style={{ color: COLORS.textFaint, fontSize: 11.5, marginTop: 16, borderTop: `1px solid ${COLORS.border}`, paddingTop: 12 }}>
+          This marks attendance just for this specific date — it won't change your weekly Timetable toggle. Great for logging past days or one-off cancellations.
+        </div>
+      </Card>
+    </div>
+  );
+}
+
+function LegendDot({ color, label }) {
+  return (
+    <div style={{ display: "flex", alignItems: "center", gap: 5 }}>
+      <span style={{ width: 6, height: 6, borderRadius: "50%", background: color }} />
+      {label}
     </div>
   );
 }
