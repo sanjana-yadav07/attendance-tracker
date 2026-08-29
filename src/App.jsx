@@ -1,9 +1,9 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useMemo } from "react";
 
 const DAYS = ["Mon", "Tue", "Wed", "Thu", "Fri"];
 const FULL_DAY = { Mon: "Monday", Tue: "Tuesday", Wed: "Wednesday", Thu: "Thursday", Fri: "Friday" };
-const WEEKDAY_INDEX_TO_KEY = { 1: "Mon", 2: "Tue", 3: "Wed", 4: "Thu", 5: "Fri" }; // JS getDay(): 0=Sun
-const STORAGE_KEY = "attendance-tracker-v2";
+const JS_DAY_TO_KEY = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+const STORAGE_KEY = "attendance-tracker-v3";
 
 const COLORS = {
   bg: "#14161B",
@@ -23,27 +23,19 @@ const COLORS = {
 };
 
 const uid = () => Math.random().toString(36).slice(2, 10);
-
-// local YYYY-MM-DD (avoids UTC offset issues from toISOString)
-function toDateKey(date) {
-  const y = date.getFullYear();
-  const m = String(date.getMonth() + 1).padStart(2, "0");
-  const d = String(date.getDate()).padStart(2, "0");
-  return `${y}-${m}-${d}`;
-}
-function todayKey() {
-  return toDateKey(new Date());
-}
+const pad2 = (n) => String(n).padStart(2, "0");
+const dateKey = (d) => `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`;
+const todayKey = () => dateKey(new Date());
 
 function emptyData() {
-  const timetable = {};
-  DAYS.forEach((d) => (timetable[d] = []));
+  const template = {};
+  DAYS.forEach((d) => (template[d] = []));
   const subjects = Array.from({ length: 6 }).map((_, i) => ({
     id: uid(),
     name: `Subject ${i + 1}`,
     todos: [],
   }));
-  return { timetable, assignments: [], subjects, calendarLog: {} };
+  return { template, assignments: [], subjects, records: {} };
 }
 
 function FontStyles() {
@@ -78,16 +70,8 @@ function FontStyles() {
       .att-scroll::-webkit-scrollbar-thumb { background: ${COLORS.borderStrong}; border-radius: 4px; }
       .att-bar-track { height: 6px; border-radius: 4px; background: ${COLORS.surface2}; overflow: hidden; }
       .att-bar-fill { height: 100%; border-radius: 4px; transition: width 0.25s ease; }
-      .att-cal-cell {
-        aspect-ratio: 1;
-        display: flex; align-items: center; justify-content: center;
-        border-radius: 8px;
-        font-size: 12.5px;
-        cursor: pointer;
-        border: 1px solid transparent;
-        position: relative;
-      }
-      .att-cal-cell:hover { border-color: ${COLORS.borderStrong}; }
+      .cal-cell { aspect-ratio: 1; border-radius: 8px; display: flex; flex-direction: column; align-items: center; justify-content: center; cursor: pointer; border: 1px solid transparent; }
+      .cal-cell:hover { border-color: ${COLORS.borderStrong}; }
       @media (max-width: 640px) {
         .att-navlabel { display: none; }
       }
@@ -116,17 +100,11 @@ function IconPlus({ color = COLORS.bg }) {
     </svg>
   );
 }
-function IconChevronLeft({ color = COLORS.textMuted }) {
+function IconChevron({ dir = "left" }) {
+  const d = dir === "left" ? "M15 18l-6-6 6-6" : "M9 18l6-6-6-6";
   return (
-    <svg width="16" height="16" viewBox="0 0 24 24" fill="none">
-      <path d="M15 18l-6-6 6-6" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
-    </svg>
-  );
-}
-function IconChevronRight({ color = COLORS.textMuted }) {
-  return (
-    <svg width="16" height="16" viewBox="0 0 24 24" fill="none">
-      <path d="M9 18l6-6-6-6" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none">
+      <path d={d} stroke={COLORS.textMuted} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
     </svg>
   );
 }
@@ -141,22 +119,26 @@ function Checkbox({ checked, onClick }) {
 
 function Highlight({ children }) {
   return (
-    <span
-      style={{
-        background: `linear-gradient(180deg, transparent 60%, ${COLORS.accentDim} 60%)`,
-        padding: "0 2px",
-      }}
-    >
+    <span style={{ background: `linear-gradient(180deg, transparent 60%, ${COLORS.accentDim} 60%)`, padding: "0 2px" }}>
       {children}
     </span>
   );
+}
+
+function getEntriesForDate(data, key) {
+  if (data.records[key]) return data.records[key].entries;
+  const d = new Date(key + "T00:00:00");
+  const dayKey = JS_DAY_TO_KEY[d.getDay()];
+  if (!DAYS.includes(dayKey)) return [];
+  const template = data.template[dayKey] || [];
+  return template.map((t) => ({ id: uid(), templateId: t.id, time: t.time, subject: t.subject, attended: false }));
 }
 
 export default function App() {
   const [data, setData] = useState(emptyData());
   const [loaded, setLoaded] = useState(false);
   const [tab, setTab] = useState("overview");
-  const [activeDay, setActiveDay] = useState("Mon");
+  const [templateDay, setTemplateDay] = useState("Mon");
   const [selectedDate, setSelectedDate] = useState(todayKey());
 
   useEffect(() => {
@@ -165,24 +147,23 @@ export default function App() {
       if (raw) {
         const parsed = JSON.parse(raw);
         const merged = emptyData();
-        if (parsed.timetable) DAYS.forEach((d) => (merged.timetable[d] = parsed.timetable[d] || []));
+        if (parsed.template) DAYS.forEach((d) => (merged.template[d] = parsed.template[d] || []));
+        if (Array.isArray(parsed.subjects) && parsed.subjects.length) merged.subjects = parsed.subjects;
         if (Array.isArray(parsed.assignments)) {
-          const subjList = Array.isArray(parsed.subjects) && parsed.subjects.length ? parsed.subjects : merged.subjects;
           merged.assignments = parsed.assignments.map((a) => {
             if (a.subjectId) return a;
             if (a.subject) {
-              const match = subjList.find((s) => s.name.trim().toLowerCase() === String(a.subject).trim().toLowerCase());
+              const match = merged.subjects.find((s) => s.name.trim().toLowerCase() === String(a.subject).trim().toLowerCase());
               return { ...a, subjectId: match ? match.id : null };
             }
             return { ...a, subjectId: null };
           });
         }
-        if (Array.isArray(parsed.subjects) && parsed.subjects.length) merged.subjects = parsed.subjects;
-        if (parsed.calendarLog && typeof parsed.calendarLog === "object") merged.calendarLog = parsed.calendarLog;
+        if (parsed.records) merged.records = parsed.records;
         setData(merged);
       }
     } catch (e) {
-      // nothing saved yet
+      // fresh start
     }
     setLoaded(true);
   }, []);
@@ -196,99 +177,69 @@ export default function App() {
     }
   }, [data, loaded]);
 
-  // ---- timetable ops ----
-  const addClass = (day, time, subject) => {
+  const addTemplateClass = (day, time, subject) => {
     if (!subject.trim()) return;
-    setData((d) => ({
-      ...d,
-      timetable: {
-        ...d.timetable,
-        [day]: [...d.timetable[day], { id: uid(), time: time || "9:00 - 10:00", subject: subject.trim(), attended: false }],
-      },
-    }));
+    setData((d) => ({ ...d, template: { ...d.template, [day]: [...d.template[day], { id: uid(), time: time || "9:00 - 10:00", subject: subject.trim() }] } }));
   };
-  const toggleClass = (day, id) => {
-    setData((d) => ({
-      ...d,
-      timetable: {
-        ...d.timetable,
-        [day]: d.timetable[day].map((c) => (c.id === id ? { ...c, attended: !c.attended } : c)),
-      },
-    }));
-  };
-  const deleteClass = (day, id) => {
-    setData((d) => ({
-      ...d,
-      timetable: { ...d.timetable, [day]: d.timetable[day].filter((c) => c.id !== id) },
-    }));
+  const deleteTemplateClass = (day, id) => {
+    setData((d) => ({ ...d, template: { ...d.template, [day]: d.template[day].filter((c) => c.id !== id) } }));
   };
 
-  // ---- calendar ops (per-date overrides, independent of the weekly toggle) ----
-  const toggleCalendarClass = (dateKey, classId) => {
+  const ensureRecord = (d, key) => {
+    if (d.records[key]) return d.records;
+    return { ...d.records, [key]: { entries: getEntriesForDate(d, key) } };
+  };
+  const toggleEntry = (key, entryId) => {
     setData((d) => {
-      const dayLog = { ...(d.calendarLog[dateKey] || {}) };
-      dayLog[classId] = !dayLog[classId];
-      return { ...d, calendarLog: { ...d.calendarLog, [dateKey]: dayLog } };
+      const records = ensureRecord(d, key);
+      const entries = records[key].entries.map((e) => (e.id === entryId ? { ...e, attended: !e.attended } : e));
+      return { ...d, records: { ...records, [key]: { entries } } };
+    });
+  };
+  const addEntry = (key, time, subject) => {
+    if (!subject.trim()) return;
+    setData((d) => {
+      const records = ensureRecord(d, key);
+      const entries = [...records[key].entries, { id: uid(), templateId: null, time: time || "9:00 - 10:00", subject: subject.trim(), attended: false }];
+      return { ...d, records: { ...records, [key]: { entries } } };
+    });
+  };
+  const deleteEntry = (key, entryId) => {
+    setData((d) => {
+      const records = ensureRecord(d, key);
+      const entries = records[key].entries.filter((e) => e.id !== entryId);
+      return { ...d, records: { ...records, [key]: { entries } } };
     });
   };
 
-  // ---- assignment ops ----
   const addAssignment = (title, subjectId, due) => {
     if (!title.trim()) return;
-    setData((d) => ({
-      ...d,
-      assignments: [...d.assignments, { id: uid(), title: title.trim(), subjectId, due, done: false }],
-    }));
+    setData((d) => ({ ...d, assignments: [...d.assignments, { id: uid(), title: title.trim(), subjectId, due, done: false }] }));
   };
   const toggleAssignment = (id) => {
-    setData((d) => ({
-      ...d,
-      assignments: d.assignments.map((a) => (a.id === id ? { ...a, done: !a.done } : a)),
-    }));
+    setData((d) => ({ ...d, assignments: d.assignments.map((a) => (a.id === id ? { ...a, done: !a.done } : a)) }));
   };
   const deleteAssignment = (id) => {
     setData((d) => ({ ...d, assignments: d.assignments.filter((a) => a.id !== id) }));
   };
 
-  // ---- subject todo ops ----
   const renameSubject = (id, name) => {
     setData((d) => ({ ...d, subjects: d.subjects.map((s) => (s.id === id ? { ...s, name } : s)) }));
   };
   const addTodo = (subjectId, text) => {
     if (!text.trim()) return;
-    setData((d) => ({
-      ...d,
-      subjects: d.subjects.map((s) =>
-        s.id === subjectId ? { ...s, todos: [...s.todos, { id: uid(), text: text.trim(), done: false }] } : s
-      ),
-    }));
+    setData((d) => ({ ...d, subjects: d.subjects.map((s) => (s.id === subjectId ? { ...s, todos: [...s.todos, { id: uid(), text: text.trim(), done: false }] } : s)) }));
   };
   const toggleTodo = (subjectId, todoId) => {
-    setData((d) => ({
-      ...d,
-      subjects: d.subjects.map((s) =>
-        s.id === subjectId
-          ? { ...s, todos: s.todos.map((t) => (t.id === todoId ? { ...t, done: !t.done } : t)) }
-          : s
-      ),
-    }));
+    setData((d) => ({ ...d, subjects: d.subjects.map((s) => (s.id === subjectId ? { ...s, todos: s.todos.map((t) => (t.id === todoId ? { ...t, done: !t.done } : t)) } : s)) }));
   };
   const deleteTodo = (subjectId, todoId) => {
-    setData((d) => ({
-      ...d,
-      subjects: d.subjects.map((s) =>
-        s.id === subjectId ? { ...s, todos: s.todos.filter((t) => t.id !== todoId) } : s
-      ),
-    }));
+    setData((d) => ({ ...d, subjects: d.subjects.map((s) => (s.id === subjectId ? { ...s, todos: s.todos.filter((t) => t.id !== todoId) } : s)) }));
   };
 
-  const dayClasses = data.timetable[activeDay] || [];
-  const dayTotal = dayClasses.length;
-  const dayAttended = dayClasses.filter((c) => c.attended).length;
-
-  const allClasses = DAYS.flatMap((d) => data.timetable[d]);
-  const overallTotal = allClasses.length;
-  const overallAttended = allClasses.filter((c) => c.attended).length;
+  const allRecordedEntries = useMemo(() => Object.values(data.records).flatMap((r) => r.entries), [data.records]);
+  const overallTotal = allRecordedEntries.length;
+  const overallAttended = allRecordedEntries.filter((e) => e.attended).length;
   const overallPct = overallTotal ? Math.round((overallAttended / overallTotal) * 100) : 0;
 
   const pendingAssignments = data.assignments.filter((a) => !a.done).length;
@@ -297,31 +248,23 @@ export default function App() {
 
   const subjectStats = data.subjects.map((s) => {
     const nameLower = s.name.trim().toLowerCase();
-    const classes = allClasses.filter((c) => c.subject.trim().toLowerCase() === nameLower);
-    const attended = classes.filter((c) => c.attended).length;
-    const total = classes.length;
+    const entries = allRecordedEntries.filter((e) => e.subject.trim().toLowerCase() === nameLower);
+    const attended = entries.filter((e) => e.attended).length;
+    const total = entries.length;
     const pct = total ? Math.round((attended / total) * 100) : null;
     const assignments = data.assignments.filter((a) => a.subjectId === s.id);
     const pendingA = assignments.filter((a) => !a.done).length;
     const doneA = assignments.filter((a) => a.done).length;
-    const todosDone = s.todos.filter((t) => t.done).length;
-    return { subject: s, total, attended, pct, pendingA, doneA, totalA: assignments.length, todosDone, todosTotal: s.todos.length };
+    return { subject: s, total, attended, pct, pendingA, doneA, totalA: assignments.length, todosDone: s.todos.filter((t) => t.done).length, todosTotal: s.todos.length };
   });
 
+  const selectedEntries = data.records[selectedDate] ? data.records[selectedDate].entries : getEntriesForDate(data, selectedDate);
+
   return (
-    <div
-      className="att-app"
-      style={{
-        background: COLORS.bg,
-        minHeight: "100vh",
-        fontFamily: "'Inter', sans-serif",
-        color: COLORS.text,
-        padding: "0 0 60px",
-      }}
-    >
+    <div className="att-app" style={{ background: COLORS.bg, minHeight: "100vh", fontFamily: "'Inter', sans-serif", color: COLORS.text, padding: "0 0 60px" }}>
       <FontStyles />
 
-      <div style={{ padding: "28px 20px 8px", maxWidth: 920, margin: "0 auto" }}>
+      <div style={{ padding: "28px 20px 8px", maxWidth: 960, margin: "0 auto" }}>
         <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", flexWrap: "wrap", gap: 8 }}>
           <h1 style={{ fontFamily: "'Fraunces', serif", fontWeight: 600, fontSize: 28, margin: 0, letterSpacing: "-0.01em" }}>
             <Highlight>Class tracker</Highlight>
@@ -332,27 +275,17 @@ export default function App() {
         </div>
       </div>
 
-      <div
-        style={{
-          position: "sticky",
-          top: 0,
-          zIndex: 10,
-          background: `${COLORS.bg}f2`,
-          backdropFilter: "blur(6px)",
-          borderBottom: `1px solid ${COLORS.border}`,
-          marginTop: 12,
-        }}
-      >
-        <div style={{ maxWidth: 920, margin: "0 auto", display: "flex", gap: 4, padding: "0 20px", overflowX: "auto" }}>
+      <div style={{ position: "sticky", top: 0, zIndex: 10, background: `${COLORS.bg}f2`, backdropFilter: "blur(6px)", borderBottom: `1px solid ${COLORS.border}`, marginTop: 12 }}>
+        <div style={{ maxWidth: 960, margin: "0 auto", display: "flex", gap: 4, padding: "0 20px", overflowX: "auto" }}>
           <NavTab active={tab === "overview"} onClick={() => setTab("overview")} label="Overview" />
-          <NavTab active={tab === "timetable"} onClick={() => setTab("timetable")} label="Timetable" badge={`${overallAttended}/${overallTotal}`} />
-          <NavTab active={tab === "calendar"} onClick={() => setTab("calendar")} label="Calendar" />
+          <NavTab active={tab === "calendar"} onClick={() => setTab("calendar")} label="Calendar" badge={`${overallAttended}/${overallTotal}`} />
+          <NavTab active={tab === "template"} onClick={() => setTab("template")} label="Weekly setup" />
           <NavTab active={tab === "assignments"} onClick={() => setTab("assignments")} label="Assignments" badge={pendingAssignments ? String(pendingAssignments) : null} />
           <NavTab active={tab === "subjects"} onClick={() => setTab("subjects")} label="Subject todos" badge={`${doneTodos}/${totalTodos}`} />
         </div>
       </div>
 
-      <div style={{ maxWidth: 920, margin: "0 auto", padding: "24px 20px 0" }}>
+      <div style={{ maxWidth: 960, margin: "0 auto", padding: "24px 20px 0" }}>
         {tab === "overview" && (
           <OverviewTab
             overallPct={overallPct}
@@ -365,26 +298,25 @@ export default function App() {
             subjectStats={subjectStats}
           />
         )}
-        {tab === "timetable" && (
-          <TimetableTab
-            days={DAYS}
-            activeDay={activeDay}
-            setActiveDay={setActiveDay}
-            classes={dayClasses}
-            dayTotal={dayTotal}
-            dayAttended={dayAttended}
-            onAdd={(time, subject) => addClass(activeDay, time, subject)}
-            onToggle={(id) => toggleClass(activeDay, id)}
-            onDelete={(id) => deleteClass(activeDay, id)}
-          />
-        )}
         {tab === "calendar" && (
           <CalendarTab
-            timetable={data.timetable}
-            calendarLog={data.calendarLog}
+            data={data}
             selectedDate={selectedDate}
             setSelectedDate={setSelectedDate}
-            onToggleClass={toggleCalendarClass}
+            entries={selectedEntries}
+            onToggle={(id) => toggleEntry(selectedDate, id)}
+            onAdd={(time, subject) => addEntry(selectedDate, time, subject)}
+            onDelete={(id) => deleteEntry(selectedDate, id)}
+          />
+        )}
+        {tab === "template" && (
+          <TemplateTab
+            days={DAYS}
+            activeDay={templateDay}
+            setActiveDay={setTemplateDay}
+            classes={data.template[templateDay]}
+            onAdd={(time, subject) => addTemplateClass(templateDay, time, subject)}
+            onDelete={(id) => deleteTemplateClass(templateDay, id)}
           />
         )}
         {tab === "assignments" && (
@@ -406,7 +338,7 @@ function NavTab({ active, onClick, label, badge }) {
         background: "transparent",
         border: "none",
         padding: "14px 4px",
-        marginRight: 24,
+        marginRight: 22,
         color: active ? COLORS.text : COLORS.textMuted,
         fontSize: 14,
         fontWeight: 500,
@@ -420,16 +352,7 @@ function NavTab({ active, onClick, label, badge }) {
     >
       <span className="att-navlabel">{label}</span>
       {badge && (
-        <span
-          style={{
-            fontFamily: "'IBM Plex Mono', monospace",
-            fontSize: 11,
-            background: active ? COLORS.accentDim : COLORS.surface2,
-            color: active ? COLORS.accent : COLORS.textFaint,
-            padding: "1px 7px",
-            borderRadius: 999,
-          }}
-        >
+        <span style={{ fontFamily: "'IBM Plex Mono', monospace", fontSize: 11, background: active ? COLORS.accentDim : COLORS.surface2, color: active ? COLORS.accent : COLORS.textFaint, padding: "1px 7px", borderRadius: 999 }}>
           {badge}
         </span>
       )}
@@ -438,11 +361,7 @@ function NavTab({ active, onClick, label, badge }) {
 }
 
 function Card({ children, style }) {
-  return (
-    <div style={{ background: COLORS.surface1, border: `1px solid ${COLORS.border}`, borderRadius: 14, padding: "18px 18px", ...style }}>
-      {children}
-    </div>
-  );
+  return <div style={{ background: COLORS.surface1, border: `1px solid ${COLORS.border}`, borderRadius: 14, padding: "18px 18px", ...style }}>{children}</div>;
 }
 
 function MetricCard({ label, value, sub }) {
@@ -453,6 +372,19 @@ function MetricCard({ label, value, sub }) {
       {sub && <div style={{ fontSize: 11.5, color: COLORS.textFaint, marginTop: 3 }}>{sub}</div>}
     </div>
   );
+}
+
+function StatBit({ label, value }) {
+  return (
+    <div>
+      <div style={{ color: COLORS.textFaint, marginBottom: 2 }}>{label}</div>
+      <div style={{ color: COLORS.text, fontWeight: 500 }}>{value}</div>
+    </div>
+  );
+}
+
+function SectionLabel({ children }) {
+  return <div style={{ fontSize: 11, letterSpacing: "0.06em", textTransform: "uppercase", color: COLORS.textFaint, marginBottom: 8, fontFamily: "'IBM Plex Mono', monospace" }}>{children}</div>;
 }
 
 function OverviewTab({ overallPct, overallAttended, overallTotal, pendingAssignments, totalAssignments, doneTodos, totalTodos, subjectStats }) {
@@ -472,17 +404,13 @@ function OverviewTab({ overallPct, overallAttended, overallTotal, pendingAssignm
             <Card key={s.subject.id} style={{ borderLeft: `3px solid ${pctColor}`, borderRadius: "6px 14px 14px 6px" }}>
               <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 10, gap: 8, flexWrap: "wrap" }}>
                 <h3 style={{ fontFamily: "'Fraunces', serif", fontWeight: 600, fontSize: 16, margin: 0 }}><Highlight>{s.subject.name}</Highlight></h3>
-                <span style={{ fontFamily: "'IBM Plex Mono', monospace", fontSize: 13, fontWeight: 500, color: pctColor }}>
-                  {s.pct === null ? "no classes yet" : `${s.pct}%`}
-                </span>
+                <span style={{ fontFamily: "'IBM Plex Mono', monospace", fontSize: 13, fontWeight: 500, color: pctColor }}>{s.pct === null ? "no classes yet" : `${s.pct}%`}</span>
               </div>
-
               {s.total > 0 && (
                 <div className="att-bar-track" style={{ marginBottom: 12 }}>
                   <div className="att-bar-fill" style={{ width: `${s.pct}%`, background: pctColor }} />
                 </div>
               )}
-
               <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(120px, 1fr))", gap: 10, fontSize: 12.5 }}>
                 <StatBit label="Classes" value={`${s.attended}/${s.total} attended`} />
                 <StatBit label="Assignments" value={s.totalA ? `${s.doneA}/${s.totalA} done` : "none"} />
@@ -493,22 +421,132 @@ function OverviewTab({ overallPct, overallAttended, overallTotal, pendingAssignm
         })}
       </div>
       <div style={{ color: COLORS.textFaint, fontSize: 12, marginTop: 14 }}>
-        Tip: assignments are linked directly to their subject card, so renaming a subject in Subject todos keeps its assignments attached. Classes in Timetable still match by subject name — type it exactly as the subject card is named for it to count here.
+        Tip: mark attendance from the Calendar tab, date by date. Assignments stay linked to their subject even if you rename it.
       </div>
     </div>
   );
 }
 
-function StatBit({ label, value }) {
+function CalendarTab({ data, selectedDate, setSelectedDate, entries, onToggle, onAdd, onDelete }) {
+  const [cursor, setCursor] = useState(() => {
+    const d = new Date(selectedDate + "T00:00:00");
+    return { year: d.getFullYear(), month: d.getMonth() };
+  });
+  const [time, setTime] = useState("");
+  const [subject, setSubject] = useState("");
+
+  const monthLabel = new Date(cursor.year, cursor.month, 1).toLocaleDateString("en-US", { month: "long", year: "numeric" });
+  const firstOfMonth = new Date(cursor.year, cursor.month, 1);
+  const startOffset = firstOfMonth.getDay();
+  const daysInMonth = new Date(cursor.year, cursor.month + 1, 0).getDate();
+
+  const cells = [];
+  for (let i = 0; i < startOffset; i++) cells.push(null);
+  for (let day = 1; day <= daysInMonth; day++) cells.push(day);
+
+  const pctForKey = (key) => {
+    const rec = data.records[key];
+    const list = rec ? rec.entries : getEntriesForDate(data, key);
+    if (!list.length) return null;
+    const att = list.filter((e) => e.attended).length;
+    return { pct: Math.round((att / list.length) * 100), total: list.length, hasRecord: !!rec };
+  };
+
+  const changeMonth = (delta) => {
+    let m = cursor.month + delta;
+    let y = cursor.year;
+    if (m < 0) { m = 11; y -= 1; }
+    if (m > 11) { m = 0; y += 1; }
+    setCursor({ year: y, month: m });
+  };
+
+  const submit = () => {
+    onAdd(time, subject);
+    setTime("");
+    setSubject("");
+  };
+
+  const dayAttended = entries.filter((e) => e.attended).length;
+  const selectedD = new Date(selectedDate + "T00:00:00");
+  const selectedLabel = selectedD.toLocaleDateString("en-US", { weekday: "long", day: "numeric", month: "long" });
+
   return (
     <div>
-      <div style={{ color: COLORS.textFaint, marginBottom: 2 }}>{label}</div>
-      <div style={{ color: COLORS.text, fontWeight: 500 }}>{value}</div>
+      <Card style={{ marginBottom: 18 }}>
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 14 }}>
+          <button onClick={() => changeMonth(-1)} style={{ background: COLORS.surface2, border: `1px solid ${COLORS.border}`, borderRadius: 8, width: 32, height: 32, display: "flex", alignItems: "center", justifyContent: "center" }}>
+            <IconChevron dir="left" />
+          </button>
+          <h2 style={{ fontFamily: "'Fraunces', serif", fontWeight: 600, fontSize: 17, margin: 0 }}>{monthLabel}</h2>
+          <button onClick={() => changeMonth(1)} style={{ background: COLORS.surface2, border: `1px solid ${COLORS.border}`, borderRadius: 8, width: 32, height: 32, display: "flex", alignItems: "center", justifyContent: "center" }}>
+            <IconChevron dir="right" />
+          </button>
+        </div>
+
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(7, 1fr)", gap: 4, marginBottom: 6 }}>
+          {["S", "M", "T", "W", "T", "F", "S"].map((d, i) => (
+            <div key={i} style={{ textAlign: "center", fontSize: 11, color: COLORS.textFaint, fontFamily: "'IBM Plex Mono', monospace" }}>{d}</div>
+          ))}
+        </div>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(7, 1fr)", gap: 4 }}>
+          {cells.map((day, i) => {
+            if (day === null) return <div key={i} />;
+            const key = `${cursor.year}-${pad2(cursor.month + 1)}-${pad2(day)}`;
+            const isSelected = key === selectedDate;
+            const isToday = key === todayKey();
+            const info = pctForKey(key);
+            let bg = "transparent";
+            let textColor = COLORS.text;
+            if (isSelected) { bg = COLORS.accent; textColor = "#2B1D08"; }
+            else if (info && info.hasRecord) { bg = info.pct >= 75 ? COLORS.presentDim : COLORS.dangerDim; }
+            return (
+              <div key={i} className="cal-cell" onClick={() => setSelectedDate(key)} style={{ background: bg, border: isToday && !isSelected ? `1px solid ${COLORS.accent}` : undefined }}>
+                <span style={{ fontSize: 13, color: textColor, fontWeight: isSelected || isToday ? 600 : 400 }}>{day}</span>
+                {info && !isSelected && <span style={{ fontSize: 8, color: info.pct >= 75 ? COLORS.present : COLORS.danger, fontFamily: "'IBM Plex Mono', monospace" }}>{info.pct}%</span>}
+              </div>
+            );
+          })}
+        </div>
+      </Card>
+
+      <Card style={{ borderLeft: `3px solid ${COLORS.accent}`, borderRadius: "6px 14px 14px 6px" }}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16, flexWrap: "wrap", gap: 6 }}>
+          <h2 style={{ fontFamily: "'Fraunces', serif", fontWeight: 600, fontSize: 18, margin: 0 }}><Highlight>{selectedLabel}</Highlight></h2>
+          <span style={{ fontFamily: "'IBM Plex Mono', monospace", fontSize: 12, color: COLORS.textMuted }}>{dayAttended}/{entries.length} attended</span>
+        </div>
+
+        {entries.length === 0 && (
+          <div style={{ color: COLORS.textFaint, fontSize: 13, padding: "8px 0 18px" }}>
+            No classes on this date yet — set up your weekly schedule in "Weekly setup" so it auto-fills here, or add a one-off class below.
+          </div>
+        )}
+
+        <div style={{ display: "flex", flexDirection: "column", gap: 8, marginBottom: entries.length ? 18 : 0 }}>
+          {entries.map((e) => (
+            <div key={e.id} className="att-row" style={{ display: "flex", alignItems: "center", gap: 12, background: e.attended ? COLORS.presentDim : COLORS.surface2, border: `1px solid ${e.attended ? COLORS.present + "55" : COLORS.border}`, borderRadius: 10, padding: "10px 12px" }}>
+              <Checkbox checked={e.attended} onClick={() => onToggle(e.id)} />
+              <span style={{ fontFamily: "'IBM Plex Mono', monospace", fontSize: 12, color: COLORS.textMuted, minWidth: 96 }}>{e.time}</span>
+              <span style={{ fontSize: 14, fontWeight: 500, flex: 1 }}>{e.subject}</span>
+              <button className="att-del" onClick={() => onDelete(e.id)} style={{ background: "transparent", border: "none", padding: 4, display: "flex" }} aria-label="Remove">
+                <IconTrash />
+              </button>
+            </div>
+          ))}
+        </div>
+
+        <div style={{ display: "flex", gap: 8, flexWrap: "wrap", paddingTop: entries.length ? 14 : 0, borderTop: entries.length ? `1px solid ${COLORS.border}` : "none" }}>
+          <input placeholder="9:00 - 10:00" value={time} onChange={(e) => setTime(e.target.value)} style={{ width: 130 }} />
+          <input placeholder="Add a class for this date" value={subject} onChange={(e) => setSubject(e.target.value)} onKeyDown={(e) => e.key === "Enter" && submit()} style={{ flex: 1, minWidth: 160 }} />
+          <button onClick={submit} style={{ background: COLORS.accent, border: "none", borderRadius: 8, padding: "0 14px", display: "flex", alignItems: "center", gap: 6, color: "#2B1D08", fontSize: 13, fontWeight: 600 }}>
+            <IconPlus /> Add
+          </button>
+        </div>
+      </Card>
     </div>
   );
 }
 
-function TimetableTab({ days, activeDay, setActiveDay, classes, dayTotal, dayAttended, onAdd, onToggle, onDelete }) {
+function TemplateTab({ days, activeDay, setActiveDay, classes, onAdd, onDelete }) {
   const [time, setTime] = useState("");
   const [subject, setSubject] = useState("");
 
@@ -520,20 +558,15 @@ function TimetableTab({ days, activeDay, setActiveDay, classes, dayTotal, dayAtt
 
   return (
     <div>
+      <div style={{ color: COLORS.textMuted, fontSize: 13, marginBottom: 16 }}>
+        Set your regular Mon–Fri schedule once here — it'll auto-fill into the Calendar for every matching date, and you can still tweak any specific day there.
+      </div>
       <div style={{ display: "flex", gap: 8, marginBottom: 18, flexWrap: "wrap" }}>
         {days.map((d) => (
           <button
             key={d}
             onClick={() => setActiveDay(d)}
-            style={{
-              background: activeDay === d ? COLORS.accent : COLORS.surface2,
-              color: activeDay === d ? "#2B1D08" : COLORS.textMuted,
-              border: `1px solid ${activeDay === d ? COLORS.accent : COLORS.border}`,
-              borderRadius: 10,
-              padding: "9px 16px",
-              fontSize: 13,
-              fontWeight: 500,
-            }}
+            style={{ background: activeDay === d ? COLORS.accent : COLORS.surface2, color: activeDay === d ? "#2B1D08" : COLORS.textMuted, border: `1px solid ${activeDay === d ? COLORS.accent : COLORS.border}`, borderRadius: 10, padding: "9px 16px", fontSize: 13, fontWeight: 500 }}
           >
             {d}
           </button>
@@ -541,36 +574,16 @@ function TimetableTab({ days, activeDay, setActiveDay, classes, dayTotal, dayAtt
       </div>
 
       <Card style={{ borderLeft: `3px solid ${COLORS.accent}`, borderRadius: "6px 14px 14px 6px" }}>
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
-          <h2 style={{ fontFamily: "'Fraunces', serif", fontWeight: 600, fontSize: 19, margin: 0 }}><Highlight>{FULL_DAY[activeDay]}</Highlight></h2>
-          <span style={{ fontFamily: "'IBM Plex Mono', monospace", fontSize: 12, color: COLORS.textMuted }}>{dayAttended}/{dayTotal} attended</span>
-        </div>
+        <h2 style={{ fontFamily: "'Fraunces', serif", fontWeight: 600, fontSize: 19, margin: "0 0 16px" }}><Highlight>{FULL_DAY[activeDay]}</Highlight></h2>
 
-        {classes.length === 0 && (
-          <div style={{ color: COLORS.textFaint, fontSize: 13, padding: "12px 0 20px" }}>
-            No classes added for {FULL_DAY[activeDay]} yet. Add your 9–5 schedule below.
-          </div>
-        )}
+        {classes.length === 0 && <div style={{ color: COLORS.textFaint, fontSize: 13, padding: "12px 0 20px" }}>No classes set for {FULL_DAY[activeDay]} yet.</div>}
 
         <div style={{ display: "flex", flexDirection: "column", gap: 8, marginBottom: classes.length ? 18 : 0 }}>
           {classes.map((c) => (
-            <div
-              key={c.id}
-              className="att-row"
-              style={{
-                display: "flex",
-                alignItems: "center",
-                gap: 12,
-                background: c.attended ? COLORS.presentDim : COLORS.surface2,
-                border: `1px solid ${c.attended ? COLORS.present + "55" : COLORS.border}`,
-                borderRadius: 10,
-                padding: "10px 12px",
-              }}
-            >
-              <Checkbox checked={c.attended} onClick={() => onToggle(c.id)} />
+            <div key={c.id} className="att-row" style={{ display: "flex", alignItems: "center", gap: 12, background: COLORS.surface2, border: `1px solid ${COLORS.border}`, borderRadius: 10, padding: "10px 12px" }}>
               <span style={{ fontFamily: "'IBM Plex Mono', monospace", fontSize: 12, color: COLORS.textMuted, minWidth: 96 }}>{c.time}</span>
               <span style={{ fontSize: 14, fontWeight: 500, flex: 1 }}>{c.subject}</span>
-              <button className="att-del" onClick={() => onDelete(c.id)} style={{ background: "transparent", border: "none", padding: 4, display: "flex" }} aria-label="Delete class">
+              <button className="att-del" onClick={() => onDelete(c.id)} style={{ background: "transparent", border: "none", padding: 4, display: "flex" }} aria-label="Delete">
                 <IconTrash />
               </button>
             </div>
@@ -579,194 +592,12 @@ function TimetableTab({ days, activeDay, setActiveDay, classes, dayTotal, dayAtt
 
         <div style={{ display: "flex", gap: 8, flexWrap: "wrap", paddingTop: classes.length ? 14 : 0, borderTop: classes.length ? `1px solid ${COLORS.border}` : "none" }}>
           <input placeholder="9:00 - 10:00" value={time} onChange={(e) => setTime(e.target.value)} style={{ width: 130 }} />
-          <input
-            placeholder="Add a class, e.g. Data Structures"
-            value={subject}
-            onChange={(e) => setSubject(e.target.value)}
-            onKeyDown={(e) => e.key === "Enter" && submit()}
-            style={{ flex: 1, minWidth: 160 }}
-          />
-          <button
-            onClick={submit}
-            style={{ background: COLORS.accent, border: "none", borderRadius: 8, padding: "0 14px", display: "flex", alignItems: "center", gap: 6, color: "#2B1D08", fontSize: 13, fontWeight: 600 }}
-          >
+          <input placeholder="Add a class, e.g. Data Structures" value={subject} onChange={(e) => setSubject(e.target.value)} onKeyDown={(e) => e.key === "Enter" && submit()} style={{ flex: 1, minWidth: 160 }} />
+          <button onClick={submit} style={{ background: COLORS.accent, border: "none", borderRadius: 8, padding: "0 14px", display: "flex", alignItems: "center", gap: 6, color: "#2B1D08", fontSize: 13, fontWeight: 600 }}>
             <IconPlus /> Add
           </button>
         </div>
       </Card>
-    </div>
-  );
-}
-
-// ---------------- Calendar Tab ----------------
-
-function CalendarTab({ timetable, calendarLog, selectedDate, setSelectedDate, onToggleClass }) {
-  // selectedDate is a "YYYY-MM-DD" string. Keep a separate cursor for which month is shown.
-  const initial = selectedDate ? new Date(selectedDate + "T00:00:00") : new Date();
-  const [viewYear, setViewYear] = useState(initial.getFullYear());
-  const [viewMonth, setViewMonth] = useState(initial.getMonth()); // 0-indexed
-
-  const monthLabel = new Date(viewYear, viewMonth, 1).toLocaleDateString("en-US", { month: "long", year: "numeric" });
-  const firstOfMonth = new Date(viewYear, viewMonth, 1);
-  const startOffset = firstOfMonth.getDay(); // 0=Sun
-  const daysInMonth = new Date(viewYear, viewMonth + 1, 0).getDate();
-
-  const cells = [];
-  for (let i = 0; i < startOffset; i++) cells.push(null);
-  for (let day = 1; day <= daysInMonth; day++) cells.push(day);
-
-  const goPrevMonth = () => {
-    if (viewMonth === 0) {
-      setViewMonth(11);
-      setViewYear((y) => y - 1);
-    } else {
-      setViewMonth((m) => m - 1);
-    }
-  };
-  const goNextMonth = () => {
-    if (viewMonth === 11) {
-      setViewMonth(0);
-      setViewYear((y) => y + 1);
-    } else {
-      setViewMonth((m) => m + 1);
-    }
-  };
-
-  const selDateObj = new Date(selectedDate + "T00:00:00");
-  const selWeekdayIdx = selDateObj.getDay();
-  const selDayKey = WEEKDAY_INDEX_TO_KEY[selWeekdayIdx]; // undefined for Sat/Sun
-  const classesForSelected = selDayKey ? timetable[selDayKey] || [] : [];
-  const logForSelected = calendarLog[selectedDate] || {};
-  const attendedCount = classesForSelected.filter((c) => logForSelected[c.id]).length;
-
-  return (
-    <div style={{ display: "grid", gridTemplateColumns: "minmax(280px, 380px) 1fr", gap: 20 }}>
-      <Card>
-        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 14 }}>
-          <button onClick={goPrevMonth} style={{ background: COLORS.surface2, border: `1px solid ${COLORS.border}`, borderRadius: 8, padding: 6, display: "flex" }} aria-label="Previous month">
-            <IconChevronLeft />
-          </button>
-          <h3 style={{ fontFamily: "'Fraunces', serif", fontWeight: 600, fontSize: 15, margin: 0 }}>{monthLabel}</h3>
-          <button onClick={goNextMonth} style={{ background: COLORS.surface2, border: `1px solid ${COLORS.border}`, borderRadius: 8, padding: 6, display: "flex" }} aria-label="Next month">
-            <IconChevronRight />
-          </button>
-        </div>
-
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(7, 1fr)", gap: 4, marginBottom: 6 }}>
-          {["S", "M", "T", "W", "T", "F", "S"].map((d, i) => (
-            <div key={i} style={{ textAlign: "center", fontSize: 11, color: COLORS.textFaint, fontFamily: "'IBM Plex Mono', monospace" }}>{d}</div>
-          ))}
-        </div>
-
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(7, 1fr)", gap: 4 }}>
-          {cells.map((day, i) => {
-            if (day === null) return <div key={i} />;
-            const dateObj = new Date(viewYear, viewMonth, day);
-            const dateKey = toDateKey(dateObj);
-            const weekdayIdx = dateObj.getDay();
-            const dayKey = WEEKDAY_INDEX_TO_KEY[weekdayIdx];
-            const hasClasses = dayKey && (timetable[dayKey] || []).length > 0;
-            const log = calendarLog[dateKey] || {};
-            const dayClassesCount = hasClasses ? timetable[dayKey].length : 0;
-            const dayAttendedCount = hasClasses ? timetable[dayKey].filter((c) => log[c.id]).length : 0;
-            const isSelected = dateKey === selectedDate;
-            const isToday = dateKey === todayKey();
-
-            let dotColor = null;
-            if (hasClasses) {
-              dotColor = dayAttendedCount === dayClassesCount ? COLORS.present : dayAttendedCount > 0 ? COLORS.accent : COLORS.textFaint;
-            }
-
-            return (
-              <div
-                key={i}
-                className="att-cal-cell"
-                onClick={() => setSelectedDate(dateKey)}
-                style={{
-                  background: isSelected ? COLORS.accentDim : "transparent",
-                  border: isSelected ? `1px solid ${COLORS.accent}` : isToday ? `1px solid ${COLORS.borderStrong}` : "1px solid transparent",
-                  color: isSelected ? COLORS.accent : COLORS.text,
-                  fontWeight: isToday ? 600 : 400,
-                }}
-              >
-                {day}
-                {dotColor && (
-                  <span style={{ position: "absolute", bottom: 4, width: 4, height: 4, borderRadius: "50%", background: dotColor }} />
-                )}
-              </div>
-            );
-          })}
-        </div>
-
-        <div style={{ display: "flex", gap: 14, marginTop: 14, fontSize: 11, color: COLORS.textFaint, flexWrap: "wrap" }}>
-          <LegendDot color={COLORS.present} label="fully attended" />
-          <LegendDot color={COLORS.accent} label="partial" />
-          <LegendDot color={COLORS.textFaint} label="none marked" />
-        </div>
-      </Card>
-
-      <Card style={{ borderLeft: `3px solid ${COLORS.accent}`, borderRadius: "6px 14px 14px 6px" }}>
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 4, flexWrap: "wrap", gap: 6 }}>
-          <h2 style={{ fontFamily: "'Fraunces', serif", fontWeight: 600, fontSize: 18, margin: 0 }}>
-            <Highlight>{selDateObj.toLocaleDateString("en-US", { weekday: "long", month: "long", day: "numeric" })}</Highlight>
-          </h2>
-          {classesForSelected.length > 0 && (
-            <span style={{ fontFamily: "'IBM Plex Mono', monospace", fontSize: 12, color: COLORS.textMuted }}>{attendedCount}/{classesForSelected.length} attended</span>
-          )}
-        </div>
-
-        {!selDayKey && (
-          <div style={{ color: COLORS.textFaint, fontSize: 13, padding: "16px 0" }}>
-            Weekend — no classes scheduled in the timetable.
-          </div>
-        )}
-
-        {selDayKey && classesForSelected.length === 0 && (
-          <div style={{ color: COLORS.textFaint, fontSize: 13, padding: "16px 0" }}>
-            No {FULL_DAY[selDayKey]} classes in your timetable yet. Add some in the Timetable tab and they'll show up here for every {FULL_DAY[selDayKey]}.
-          </div>
-        )}
-
-        {classesForSelected.length > 0 && (
-          <div style={{ display: "flex", flexDirection: "column", gap: 8, marginTop: 14 }}>
-            {classesForSelected.map((c) => {
-              const checked = !!logForSelected[c.id];
-              return (
-                <div
-                  key={c.id}
-                  className="att-row"
-                  style={{
-                    display: "flex",
-                    alignItems: "center",
-                    gap: 12,
-                    background: checked ? COLORS.presentDim : COLORS.surface2,
-                    border: `1px solid ${checked ? COLORS.present + "55" : COLORS.border}`,
-                    borderRadius: 10,
-                    padding: "10px 12px",
-                  }}
-                >
-                  <Checkbox checked={checked} onClick={() => onToggleClass(selectedDate, c.id)} />
-                  <span style={{ fontFamily: "'IBM Plex Mono', monospace", fontSize: 12, color: COLORS.textMuted, minWidth: 96 }}>{c.time}</span>
-                  <span style={{ fontSize: 14, fontWeight: 500, flex: 1 }}>{c.subject}</span>
-                </div>
-              );
-            })}
-          </div>
-        )}
-
-        <div style={{ color: COLORS.textFaint, fontSize: 11.5, marginTop: 16, borderTop: `1px solid ${COLORS.border}`, paddingTop: 12 }}>
-          This marks attendance just for this specific date — it won't change your weekly Timetable toggle. Great for logging past days or one-off cancellations.
-        </div>
-      </Card>
-    </div>
-  );
-}
-
-function LegendDot({ color, label }) {
-  return (
-    <div style={{ display: "flex", alignItems: "center", gap: 5 }}>
-      <span style={{ width: 6, height: 6, borderRadius: "50%", background: color }} />
-      {label}
     </div>
   );
 }
@@ -785,14 +616,7 @@ function AssignmentsTab({ subjects, assignments, onAdd, onToggle, onDelete }) {
 
       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))", gap: 14, paddingBottom: 20 }}>
         {subjects.map((s) => (
-          <SubjectAssignmentCard
-            key={s.id}
-            subject={s}
-            assignments={assignments.filter((a) => a.subjectId === s.id)}
-            onAdd={(title, due) => onAdd(title, s.id, due)}
-            onToggle={onToggle}
-            onDelete={onDelete}
-          />
+          <SubjectAssignmentCard key={s.id} subject={s} assignments={assignments.filter((a) => a.subjectId === s.id)} onAdd={(title, due) => onAdd(title, s.id, due)} onToggle={onToggle} onDelete={onDelete} />
         ))}
       </div>
     </div>
@@ -817,47 +641,23 @@ function SubjectAssignmentCard({ subject, assignments, onAdd, onToggle, onDelete
     <Card style={{ display: "flex", flexDirection: "column", gap: 12 }}>
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
         <h3 style={{ fontFamily: "'Fraunces', serif", fontWeight: 600, fontSize: 16, margin: 0 }}><Highlight>{subject.name}</Highlight></h3>
-        <span style={{ fontFamily: "'IBM Plex Mono', monospace", fontSize: 11, color: COLORS.textFaint }}>
-          {done.length}/{assignments.length}
-        </span>
+        <span style={{ fontFamily: "'IBM Plex Mono', monospace", fontSize: 11, color: COLORS.textFaint }}>{done.length}/{assignments.length}</span>
       </div>
 
       <div className="att-scroll" style={{ display: "flex", flexDirection: "column", gap: 6, maxHeight: 220, overflowY: "auto" }}>
         {assignments.length === 0 && <div style={{ color: COLORS.textFaint, fontSize: 12.5 }}>No assignments yet.</div>}
-        {pending.map((a) => (
-          <AssignmentRow key={a.id} a={a} onToggle={onToggle} onDelete={onDelete} />
-        ))}
-        {done.map((a) => (
-          <AssignmentRow key={a.id} a={a} onToggle={onToggle} onDelete={onDelete} />
-        ))}
+        {pending.map((a) => <AssignmentRow key={a.id} a={a} onToggle={onToggle} onDelete={onDelete} />)}
+        {done.map((a) => <AssignmentRow key={a.id} a={a} onToggle={onToggle} onDelete={onDelete} />)}
       </div>
 
       <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
-        <input
-          placeholder="Add assignment"
-          value={title}
-          onChange={(e) => setTitle(e.target.value)}
-          onKeyDown={(e) => e.key === "Enter" && submit()}
-          style={{ flex: 1, minWidth: 110 }}
-        />
+        <input placeholder="Add assignment" value={title} onChange={(e) => setTitle(e.target.value)} onKeyDown={(e) => e.key === "Enter" && submit()} style={{ flex: 1, minWidth: 110 }} />
         <input type="date" value={due} onChange={(e) => setDue(e.target.value)} style={{ width: 130 }} />
-        <button
-          onClick={submit}
-          style={{ background: COLORS.surface2, border: `1px solid ${COLORS.border}`, borderRadius: 8, padding: "0 12px", color: COLORS.accent, display: "flex", alignItems: "center" }}
-          aria-label="Add assignment"
-        >
+        <button onClick={submit} style={{ background: COLORS.surface2, border: `1px solid ${COLORS.border}`, borderRadius: 8, padding: "0 12px", color: COLORS.accent, display: "flex", alignItems: "center" }} aria-label="Add assignment">
           <IconPlus color={COLORS.accent} />
         </button>
       </div>
     </Card>
-  );
-}
-
-function SectionLabel({ children }) {
-  return (
-    <div style={{ fontSize: 11, letterSpacing: "0.06em", textTransform: "uppercase", color: COLORS.textFaint, marginBottom: 8, fontFamily: "'IBM Plex Mono', monospace" }}>
-      {children}
-    </div>
   );
 }
 
