@@ -3,7 +3,7 @@ import React, { useState, useEffect, useMemo } from "react";
 const DAYS = ["Mon", "Tue", "Wed", "Thu", "Fri"];
 const FULL_DAY = { Mon: "Monday", Tue: "Tuesday", Wed: "Wednesday", Thu: "Thursday", Fri: "Friday" };
 const JS_DAY_TO_KEY = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
-const STORAGE_KEY = "attendance-tracker-v3";
+const STORAGE_KEY = "attendance-tracker-v4";
 
 const COLORS = {
   bg: "#14161B",
@@ -64,8 +64,8 @@ function FontStyles() {
         background: transparent;
       }
       .att-checkbox.checked { background: ${COLORS.present}; border-color: ${COLORS.present}; }
-      .att-row:hover .att-del { opacity: 1; }
-      .att-del { opacity: 0; transition: opacity 0.15s ease; }
+      .att-row:hover .att-actions { opacity: 1; }
+      .att-actions { opacity: 0; transition: opacity 0.15s ease; display: flex; gap: 4px; }
       .att-scroll::-webkit-scrollbar { width: 6px; height: 6px; }
       .att-scroll::-webkit-scrollbar-thumb { background: ${COLORS.borderStrong}; border-radius: 4px; }
       .att-bar-track { height: 6px; border-radius: 4px; background: ${COLORS.surface2}; overflow: hidden; }
@@ -90,6 +90,13 @@ function IconTrash({ color = COLORS.textFaint }) {
   return (
     <svg width="15" height="15" viewBox="0 0 24 24" fill="none">
       <path d="M3 6h18M8 6V4a2 2 0 012-2h4a2 2 0 012 2v2m3 0l-1 14a2 2 0 01-2 2H7a2 2 0 01-2-2L4 6h16z" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  );
+}
+function IconPencil({ color = COLORS.textFaint }) {
+  return (
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none">
+      <path d="M12 20h9M16.5 3.5a2.12 2.12 0 013 3L7 19l-4 1 1-4L16.5 3.5z" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
     </svg>
   );
 }
@@ -125,13 +132,18 @@ function Highlight({ children }) {
   );
 }
 
+function subjectName(subjects, id) {
+  const s = subjects.find((s) => s.id === id);
+  return s ? s.name : "Unknown subject";
+}
+
 function getEntriesForDate(data, key) {
   if (data.records[key]) return data.records[key].entries;
   const d = new Date(key + "T00:00:00");
   const dayKey = JS_DAY_TO_KEY[d.getDay()];
   if (!DAYS.includes(dayKey)) return [];
   const template = data.template[dayKey] || [];
-  return template.map((t) => ({ id: uid(), templateId: t.id, time: t.time, subject: t.subject, attended: false }));
+  return template.map((t) => ({ id: uid(), templateId: t.id, time: t.time, subjectId: t.subjectId, attended: false }));
 }
 
 export default function App() {
@@ -147,8 +159,19 @@ export default function App() {
       if (raw) {
         const parsed = JSON.parse(raw);
         const merged = emptyData();
-        if (parsed.template) DAYS.forEach((d) => (merged.template[d] = parsed.template[d] || []));
         if (Array.isArray(parsed.subjects) && parsed.subjects.length) merged.subjects = parsed.subjects;
+
+        // migrate template: old versions stored free-text `subject`, new stores `subjectId`
+        if (parsed.template) {
+          DAYS.forEach((d) => {
+            merged.template[d] = (parsed.template[d] || []).map((c) => {
+              if (c.subjectId) return c;
+              const match = merged.subjects.find((s) => s.name.trim().toLowerCase() === String(c.subject || "").trim().toLowerCase());
+              return { id: c.id, time: c.time, subjectId: match ? match.id : merged.subjects[0]?.id || null };
+            });
+          });
+        }
+
         if (Array.isArray(parsed.assignments)) {
           merged.assignments = parsed.assignments.map((a) => {
             if (a.subjectId) return a;
@@ -159,7 +182,21 @@ export default function App() {
             return { ...a, subjectId: null };
           });
         }
-        if (parsed.records) merged.records = parsed.records;
+
+        if (parsed.records) {
+          const migratedRecords = {};
+          Object.entries(parsed.records).forEach(([key, rec]) => {
+            migratedRecords[key] = {
+              entries: (rec.entries || []).map((e) => {
+                if (e.subjectId) return e;
+                const match = merged.subjects.find((s) => s.name.trim().toLowerCase() === String(e.subject || "").trim().toLowerCase());
+                return { id: e.id, templateId: e.templateId || null, time: e.time, subjectId: match ? match.id : merged.subjects[0]?.id || null, attended: !!e.attended };
+              }),
+            };
+          });
+          merged.records = migratedRecords;
+        }
+
         setData(merged);
       }
     } catch (e) {
@@ -177,14 +214,19 @@ export default function App() {
     }
   }, [data, loaded]);
 
-  const addTemplateClass = (day, time, subject) => {
-    if (!subject.trim()) return;
-    setData((d) => ({ ...d, template: { ...d.template, [day]: [...d.template[day], { id: uid(), time: time || "9:00 - 10:00", subject: subject.trim() }] } }));
+  // ---- weekly template ops ----
+  const addTemplateClass = (day, time, subjectId) => {
+    if (!subjectId) return;
+    setData((d) => ({ ...d, template: { ...d.template, [day]: [...d.template[day], { id: uid(), time: time || "9:00 - 10:00", subjectId }] } }));
+  };
+  const updateTemplateClass = (day, id, time, subjectId) => {
+    setData((d) => ({ ...d, template: { ...d.template, [day]: d.template[day].map((c) => (c.id === id ? { ...c, time, subjectId } : c)) } }));
   };
   const deleteTemplateClass = (day, id) => {
     setData((d) => ({ ...d, template: { ...d.template, [day]: d.template[day].filter((c) => c.id !== id) } }));
   };
 
+  // ---- date record ops ----
   const ensureRecord = (d, key) => {
     if (d.records[key]) return d.records;
     return { ...d.records, [key]: { entries: getEntriesForDate(d, key) } };
@@ -196,11 +238,18 @@ export default function App() {
       return { ...d, records: { ...records, [key]: { entries } } };
     });
   };
-  const addEntry = (key, time, subject) => {
-    if (!subject.trim()) return;
+  const addEntry = (key, time, subjectId) => {
+    if (!subjectId) return;
     setData((d) => {
       const records = ensureRecord(d, key);
-      const entries = [...records[key].entries, { id: uid(), templateId: null, time: time || "9:00 - 10:00", subject: subject.trim(), attended: false }];
+      const entries = [...records[key].entries, { id: uid(), templateId: null, time: time || "9:00 - 10:00", subjectId, attended: false }];
+      return { ...d, records: { ...records, [key]: { entries } } };
+    });
+  };
+  const updateEntry = (key, entryId, time, subjectId) => {
+    setData((d) => {
+      const records = ensureRecord(d, key);
+      const entries = records[key].entries.map((e) => (e.id === entryId ? { ...e, time, subjectId } : e));
       return { ...d, records: { ...records, [key]: { entries } } };
     });
   };
@@ -212,6 +261,7 @@ export default function App() {
     });
   };
 
+  // ---- assignment ops ----
   const addAssignment = (title, subjectId, due) => {
     if (!title.trim()) return;
     setData((d) => ({ ...d, assignments: [...d.assignments, { id: uid(), title: title.trim(), subjectId, due, done: false }] }));
@@ -223,6 +273,7 @@ export default function App() {
     setData((d) => ({ ...d, assignments: d.assignments.filter((a) => a.id !== id) }));
   };
 
+  // ---- subject todo ops ----
   const renameSubject = (id, name) => {
     setData((d) => ({ ...d, subjects: d.subjects.map((s) => (s.id === id ? { ...s, name } : s)) }));
   };
@@ -247,15 +298,13 @@ export default function App() {
   const doneTodos = data.subjects.reduce((s, sub) => s + sub.todos.filter((t) => t.done).length, 0);
 
   const subjectStats = data.subjects.map((s) => {
-    const nameLower = s.name.trim().toLowerCase();
-    const entries = allRecordedEntries.filter((e) => e.subject.trim().toLowerCase() === nameLower);
+    const entries = allRecordedEntries.filter((e) => e.subjectId === s.id);
     const attended = entries.filter((e) => e.attended).length;
     const total = entries.length;
     const pct = total ? Math.round((attended / total) * 100) : null;
     const assignments = data.assignments.filter((a) => a.subjectId === s.id);
-    const pendingA = assignments.filter((a) => !a.done).length;
     const doneA = assignments.filter((a) => a.done).length;
-    return { subject: s, total, attended, pct, pendingA, doneA, totalA: assignments.length, todosDone: s.todos.filter((t) => t.done).length, todosTotal: s.todos.length };
+    return { subject: s, total, attended, pct, totalA: assignments.length, doneA, todosDone: s.todos.filter((t) => t.done).length, todosTotal: s.todos.length };
   });
 
   const selectedEntries = data.records[selectedDate] ? data.records[selectedDate].entries : getEntriesForDate(data, selectedDate);
@@ -301,21 +350,25 @@ export default function App() {
         {tab === "calendar" && (
           <CalendarTab
             data={data}
+            subjects={data.subjects}
             selectedDate={selectedDate}
             setSelectedDate={setSelectedDate}
             entries={selectedEntries}
             onToggle={(id) => toggleEntry(selectedDate, id)}
-            onAdd={(time, subject) => addEntry(selectedDate, time, subject)}
+            onAdd={(time, subjectId) => addEntry(selectedDate, time, subjectId)}
+            onUpdate={(id, time, subjectId) => updateEntry(selectedDate, id, time, subjectId)}
             onDelete={(id) => deleteEntry(selectedDate, id)}
           />
         )}
         {tab === "template" && (
           <TemplateTab
             days={DAYS}
+            subjects={data.subjects}
             activeDay={templateDay}
             setActiveDay={setTemplateDay}
             classes={data.template[templateDay]}
-            onAdd={(time, subject) => addTemplateClass(templateDay, time, subject)}
+            onAdd={(time, subjectId) => addTemplateClass(templateDay, time, subjectId)}
+            onUpdate={(id, time, subjectId) => updateTemplateClass(templateDay, id, time, subjectId)}
             onDelete={(id) => deleteTemplateClass(templateDay, id)}
           />
         )}
@@ -421,19 +474,100 @@ function OverviewTab({ overallPct, overallAttended, overallTotal, pendingAssignm
         })}
       </div>
       <div style={{ color: COLORS.textFaint, fontSize: 12, marginTop: 14 }}>
-        Tip: mark attendance from the Calendar tab, date by date. Assignments stay linked to their subject even if you rename it.
+        Tip: mark attendance from the Calendar tab. Everything is linked by subject, so renaming a subject in Subject todos updates it everywhere.
       </div>
     </div>
   );
 }
 
-function CalendarTab({ data, selectedDate, setSelectedDate, entries, onToggle, onAdd, onDelete }) {
+// shared inline row for a class entry with select-based subject + inline edit
+function ClassRow({ entry, subjects, showCheckbox, checked, onToggleCheck, onSave, onDelete }) {
+  const [editing, setEditing] = useState(false);
+  const [time, setTime] = useState(entry.time);
+  const [subjectId, setSubjectId] = useState(entry.subjectId);
+
+  const save = () => {
+    onSave(time, subjectId);
+    setEditing(false);
+  };
+
+  if (editing) {
+    return (
+      <div className="att-row" style={{ display: "flex", alignItems: "center", gap: 8, background: COLORS.surface2, border: `1px solid ${COLORS.accent}`, borderRadius: 10, padding: "10px 12px", flexWrap: "wrap" }}>
+        <input value={time} onChange={(e) => setTime(e.target.value)} style={{ width: 120 }} />
+        <select value={subjectId || ""} onChange={(e) => setSubjectId(e.target.value)} style={{ flex: 1, minWidth: 120 }}>
+          {subjects.map((s) => (
+            <option key={s.id} value={s.id}>{s.name}</option>
+          ))}
+        </select>
+        <button onClick={save} style={{ background: COLORS.accent, border: "none", borderRadius: 8, padding: "6px 12px", color: "#2B1D08", fontSize: 12, fontWeight: 600 }}>Save</button>
+        <button onClick={() => setEditing(false)} style={{ background: "transparent", border: `1px solid ${COLORS.border}`, borderRadius: 8, padding: "6px 12px", color: COLORS.textMuted, fontSize: 12 }}>Cancel</button>
+      </div>
+    );
+  }
+
+  return (
+    <div
+      className="att-row"
+      style={{
+        display: "flex",
+        alignItems: "center",
+        gap: 12,
+        background: checked ? COLORS.presentDim : COLORS.surface2,
+        border: `1px solid ${checked ? COLORS.present + "55" : COLORS.border}`,
+        borderRadius: 10,
+        padding: "10px 12px",
+      }}
+    >
+      {showCheckbox && <Checkbox checked={checked} onClick={onToggleCheck} />}
+      <span style={{ fontFamily: "'IBM Plex Mono', monospace", fontSize: 12, color: COLORS.textMuted, minWidth: 96 }}>{entry.time}</span>
+      <span style={{ fontSize: 14, fontWeight: 500, flex: 1 }}>{subjectName(subjects, entry.subjectId)}</span>
+      <div className="att-actions">
+        <button onClick={() => setEditing(true)} style={{ background: "transparent", border: "none", padding: 4, display: "flex" }} aria-label="Edit">
+          <IconPencil />
+        </button>
+        <button onClick={onDelete} style={{ background: "transparent", border: "none", padding: 4, display: "flex" }} aria-label="Delete">
+          <IconTrash />
+        </button>
+      </div>
+    </div>
+  );
+}
+
+function AddClassForm({ subjects, onAdd }) {
+  const [time, setTime] = useState("");
+  const [subjectId, setSubjectId] = useState(subjects[0]?.id || "");
+
+  useEffect(() => {
+    if (!subjectId && subjects[0]) setSubjectId(subjects[0].id);
+  }, [subjects, subjectId]);
+
+  const submit = () => {
+    if (!subjectId) return;
+    onAdd(time, subjectId);
+    setTime("");
+  };
+
+  return (
+    <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+      <input placeholder="9:00 - 10:00" value={time} onChange={(e) => setTime(e.target.value)} style={{ width: 130 }} />
+      <select value={subjectId} onChange={(e) => setSubjectId(e.target.value)} style={{ flex: 1, minWidth: 140 }}>
+        {subjects.map((s) => (
+          <option key={s.id} value={s.id}>{s.name}</option>
+        ))}
+      </select>
+      <button onClick={submit} style={{ background: COLORS.accent, border: "none", borderRadius: 8, padding: "0 14px", display: "flex", alignItems: "center", gap: 6, color: "#2B1D08", fontSize: 13, fontWeight: 600 }}>
+        <IconPlus /> Add
+      </button>
+    </div>
+  );
+}
+
+function CalendarTab({ data, subjects, selectedDate, setSelectedDate, entries, onToggle, onAdd, onUpdate, onDelete }) {
   const [cursor, setCursor] = useState(() => {
     const d = new Date(selectedDate + "T00:00:00");
     return { year: d.getFullYear(), month: d.getMonth() };
   });
-  const [time, setTime] = useState("");
-  const [subject, setSubject] = useState("");
 
   const monthLabel = new Date(cursor.year, cursor.month, 1).toLocaleDateString("en-US", { month: "long", year: "numeric" });
   const firstOfMonth = new Date(cursor.year, cursor.month, 1);
@@ -458,12 +592,6 @@ function CalendarTab({ data, selectedDate, setSelectedDate, entries, onToggle, o
     if (m < 0) { m = 11; y -= 1; }
     if (m > 11) { m = 0; y += 1; }
     setCursor({ year: y, month: m });
-  };
-
-  const submit = () => {
-    onAdd(time, subject);
-    setTime("");
-    setSubject("");
   };
 
   const dayAttended = entries.filter((e) => e.attended).length;
@@ -523,39 +651,28 @@ function CalendarTab({ data, selectedDate, setSelectedDate, entries, onToggle, o
 
         <div style={{ display: "flex", flexDirection: "column", gap: 8, marginBottom: entries.length ? 18 : 0 }}>
           {entries.map((e) => (
-            <div key={e.id} className="att-row" style={{ display: "flex", alignItems: "center", gap: 12, background: e.attended ? COLORS.presentDim : COLORS.surface2, border: `1px solid ${e.attended ? COLORS.present + "55" : COLORS.border}`, borderRadius: 10, padding: "10px 12px" }}>
-              <Checkbox checked={e.attended} onClick={() => onToggle(e.id)} />
-              <span style={{ fontFamily: "'IBM Plex Mono', monospace", fontSize: 12, color: COLORS.textMuted, minWidth: 96 }}>{e.time}</span>
-              <span style={{ fontSize: 14, fontWeight: 500, flex: 1 }}>{e.subject}</span>
-              <button className="att-del" onClick={() => onDelete(e.id)} style={{ background: "transparent", border: "none", padding: 4, display: "flex" }} aria-label="Remove">
-                <IconTrash />
-              </button>
-            </div>
+            <ClassRow
+              key={e.id}
+              entry={e}
+              subjects={subjects}
+              showCheckbox
+              checked={e.attended}
+              onToggleCheck={() => onToggle(e.id)}
+              onSave={(time, subjectId) => onUpdate(e.id, time, subjectId)}
+              onDelete={() => onDelete(e.id)}
+            />
           ))}
         </div>
 
-        <div style={{ display: "flex", gap: 8, flexWrap: "wrap", paddingTop: entries.length ? 14 : 0, borderTop: entries.length ? `1px solid ${COLORS.border}` : "none" }}>
-          <input placeholder="9:00 - 10:00" value={time} onChange={(e) => setTime(e.target.value)} style={{ width: 130 }} />
-          <input placeholder="Add a class for this date" value={subject} onChange={(e) => setSubject(e.target.value)} onKeyDown={(e) => e.key === "Enter" && submit()} style={{ flex: 1, minWidth: 160 }} />
-          <button onClick={submit} style={{ background: COLORS.accent, border: "none", borderRadius: 8, padding: "0 14px", display: "flex", alignItems: "center", gap: 6, color: "#2B1D08", fontSize: 13, fontWeight: 600 }}>
-            <IconPlus /> Add
-          </button>
+        <div style={{ paddingTop: entries.length ? 14 : 0, borderTop: entries.length ? `1px solid ${COLORS.border}` : "none" }}>
+          <AddClassForm subjects={subjects} onAdd={onAdd} />
         </div>
       </Card>
     </div>
   );
 }
 
-function TemplateTab({ days, activeDay, setActiveDay, classes, onAdd, onDelete }) {
-  const [time, setTime] = useState("");
-  const [subject, setSubject] = useState("");
-
-  const submit = () => {
-    onAdd(time, subject);
-    setTime("");
-    setSubject("");
-  };
-
+function TemplateTab({ days, subjects, activeDay, setActiveDay, classes, onAdd, onUpdate, onDelete }) {
   return (
     <div>
       <div style={{ color: COLORS.textMuted, fontSize: 13, marginBottom: 16 }}>
@@ -580,22 +697,21 @@ function TemplateTab({ days, activeDay, setActiveDay, classes, onAdd, onDelete }
 
         <div style={{ display: "flex", flexDirection: "column", gap: 8, marginBottom: classes.length ? 18 : 0 }}>
           {classes.map((c) => (
-            <div key={c.id} className="att-row" style={{ display: "flex", alignItems: "center", gap: 12, background: COLORS.surface2, border: `1px solid ${COLORS.border}`, borderRadius: 10, padding: "10px 12px" }}>
-              <span style={{ fontFamily: "'IBM Plex Mono', monospace", fontSize: 12, color: COLORS.textMuted, minWidth: 96 }}>{c.time}</span>
-              <span style={{ fontSize: 14, fontWeight: 500, flex: 1 }}>{c.subject}</span>
-              <button className="att-del" onClick={() => onDelete(c.id)} style={{ background: "transparent", border: "none", padding: 4, display: "flex" }} aria-label="Delete">
-                <IconTrash />
-              </button>
-            </div>
+            <ClassRow
+              key={c.id}
+              entry={c}
+              subjects={subjects}
+              showCheckbox={false}
+              checked={false}
+              onToggleCheck={() => {}}
+              onSave={(time, subjectId) => onUpdate(c.id, time, subjectId)}
+              onDelete={() => onDelete(c.id)}
+            />
           ))}
         </div>
 
-        <div style={{ display: "flex", gap: 8, flexWrap: "wrap", paddingTop: classes.length ? 14 : 0, borderTop: classes.length ? `1px solid ${COLORS.border}` : "none" }}>
-          <input placeholder="9:00 - 10:00" value={time} onChange={(e) => setTime(e.target.value)} style={{ width: 130 }} />
-          <input placeholder="Add a class, e.g. Data Structures" value={subject} onChange={(e) => setSubject(e.target.value)} onKeyDown={(e) => e.key === "Enter" && submit()} style={{ flex: 1, minWidth: 160 }} />
-          <button onClick={submit} style={{ background: COLORS.accent, border: "none", borderRadius: 8, padding: "0 14px", display: "flex", alignItems: "center", gap: 6, color: "#2B1D08", fontSize: 13, fontWeight: 600 }}>
-            <IconPlus /> Add
-          </button>
+        <div style={{ paddingTop: classes.length ? 14 : 0, borderTop: classes.length ? `1px solid ${COLORS.border}` : "none" }}>
+          <AddClassForm subjects={subjects} onAdd={onAdd} />
         </div>
       </Card>
     </div>
