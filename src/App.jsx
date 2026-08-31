@@ -70,8 +70,9 @@ function FontStyles() {
       .att-scroll::-webkit-scrollbar-thumb { background: ${COLORS.borderStrong}; border-radius: 4px; }
       .att-bar-track { height: 6px; border-radius: 4px; background: ${COLORS.surface2}; overflow: hidden; }
       .att-bar-fill { height: 100%; border-radius: 4px; transition: width 0.25s ease; }
-      .cal-cell { aspect-ratio: 1; border-radius: 8px; display: flex; flex-direction: column; align-items: center; justify-content: center; cursor: pointer; border: 1px solid transparent; }
-      .cal-cell:hover { border-color: ${COLORS.borderStrong}; }
+      .cal-cell { aspect-ratio: 1; min-height: 52px; border-radius: 10px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 3px; cursor: pointer; border: 1px solid transparent; transition: all 0.12s ease; }
+      .cal-cell:hover { border-color: ${COLORS.accent}88; background: ${COLORS.surface2}; }
+      .cal-dot { width: 5px; height: 5px; border-radius: 50%; }
       @media (max-width: 640px) {
         .att-navlabel { display: none; }
       }
@@ -600,23 +601,36 @@ function CalendarTab({ data, subjects, selectedDate, setSelectedDate, entries, o
 
   return (
     <div>
-      <Card style={{ marginBottom: 18 }}>
-        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 14 }}>
-          <button onClick={() => changeMonth(-1)} style={{ background: COLORS.surface2, border: `1px solid ${COLORS.border}`, borderRadius: 8, width: 32, height: 32, display: "flex", alignItems: "center", justifyContent: "center" }}>
+      <Card style={{ marginBottom: 18, padding: "20px 18px" }}>
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 18 }}>
+          <button onClick={() => changeMonth(-1)} style={{ background: COLORS.surface2, border: `1px solid ${COLORS.border}`, borderRadius: 9, width: 36, height: 36, display: "flex", alignItems: "center", justifyContent: "center" }}>
             <IconChevron dir="left" />
           </button>
-          <h2 style={{ fontFamily: "'Fraunces', serif", fontWeight: 600, fontSize: 17, margin: 0 }}>{monthLabel}</h2>
-          <button onClick={() => changeMonth(1)} style={{ background: COLORS.surface2, border: `1px solid ${COLORS.border}`, borderRadius: 8, width: 32, height: 32, display: "flex", alignItems: "center", justifyContent: "center" }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+            <h2 style={{ fontFamily: "'Fraunces', serif", fontWeight: 600, fontSize: 20, margin: 0 }}>{monthLabel}</h2>
+            <button
+              onClick={() => {
+                const t = todayKey();
+                const d = new Date(t + "T00:00:00");
+                setCursor({ year: d.getFullYear(), month: d.getMonth() });
+                setSelectedDate(t);
+              }}
+              style={{ background: "transparent", border: `1px solid ${COLORS.border}`, borderRadius: 999, padding: "4px 12px", color: COLORS.textMuted, fontSize: 11.5, fontFamily: "'IBM Plex Mono', monospace" }}
+            >
+              today
+            </button>
+          </div>
+          <button onClick={() => changeMonth(1)} style={{ background: COLORS.surface2, border: `1px solid ${COLORS.border}`, borderRadius: 9, width: 36, height: 36, display: "flex", alignItems: "center", justifyContent: "center" }}>
             <IconChevron dir="right" />
           </button>
         </div>
 
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(7, 1fr)", gap: 4, marginBottom: 6 }}>
-          {["S", "M", "T", "W", "T", "F", "S"].map((d, i) => (
-            <div key={i} style={{ textAlign: "center", fontSize: 11, color: COLORS.textFaint, fontFamily: "'IBM Plex Mono', monospace" }}>{d}</div>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(7, 1fr)", gap: 6, marginBottom: 10 }}>
+          {["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"].map((d, i) => (
+            <div key={i} style={{ textAlign: "center", fontSize: 11, color: COLORS.textFaint, fontFamily: "'IBM Plex Mono', monospace", letterSpacing: "0.03em" }}>{d}</div>
           ))}
         </div>
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(7, 1fr)", gap: 4 }}>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(7, 1fr)", gap: 6 }}>
           {cells.map((day, i) => {
             if (day === null) return <div key={i} />;
             const key = `${cursor.year}-${pad2(cursor.month + 1)}-${pad2(day)}`;
@@ -626,14 +640,22 @@ function CalendarTab({ data, subjects, selectedDate, setSelectedDate, entries, o
             let bg = "transparent";
             let textColor = COLORS.text;
             if (isSelected) { bg = COLORS.accent; textColor = "#2B1D08"; }
-            else if (info && info.hasRecord) { bg = info.pct >= 75 ? COLORS.presentDim : COLORS.dangerDim; }
             return (
-              <div key={i} className="cal-cell" onClick={() => setSelectedDate(key)} style={{ background: bg, border: isToday && !isSelected ? `1px solid ${COLORS.accent}` : undefined }}>
-                <span style={{ fontSize: 13, color: textColor, fontWeight: isSelected || isToday ? 600 : 400 }}>{day}</span>
-                {info && !isSelected && <span style={{ fontSize: 8, color: info.pct >= 75 ? COLORS.present : COLORS.danger, fontFamily: "'IBM Plex Mono', monospace" }}>{info.pct}%</span>}
+              <div key={i} className="cal-cell" onClick={() => setSelectedDate(key)} style={{ background: bg, border: isToday && !isSelected ? `1.5px solid ${COLORS.accent}` : undefined }}>
+                <span style={{ fontSize: 15, color: textColor, fontWeight: isSelected || isToday ? 700 : 500 }}>{day}</span>
+                {info && !isSelected && <div className="cal-dot" style={{ background: info.pct >= 75 ? COLORS.present : COLORS.danger }} />}
               </div>
             );
           })}
+        </div>
+
+        <div style={{ display: "flex", gap: 16, marginTop: 16, paddingTop: 14, borderTop: `1px solid ${COLORS.border}` }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 11.5, color: COLORS.textMuted }}>
+            <div className="cal-dot" style={{ background: COLORS.present }} /> 75%+ attended
+          </div>
+          <div style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 11.5, color: COLORS.textMuted }}>
+            <div className="cal-dot" style={{ background: COLORS.danger }} /> below 75%
+          </div>
         </div>
       </Card>
 
