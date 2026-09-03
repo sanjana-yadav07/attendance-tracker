@@ -3,7 +3,7 @@ import React, { useState, useEffect, useMemo } from "react";
 const DAYS = ["Mon", "Tue", "Wed", "Thu", "Fri"];
 const FULL_DAY = { Mon: "Monday", Tue: "Tuesday", Wed: "Wednesday", Thu: "Thursday", Fri: "Friday" };
 const JS_DAY_TO_KEY = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
-const STORAGE_KEY = "attendance-tracker-v4";
+const STORAGE_KEY = "attendance-tracker-v5";
  
 const COLORS = {
   bg: "#14161B",
@@ -20,6 +20,8 @@ const COLORS = {
   presentDim: "#6FCB9B22",
   danger: "#E2677C",
   dangerDim: "#E2677C22",
+  cancelled: "#8D93A1",
+  cancelledDim: "#8D93A122",
 };
  
 const uid = () => Math.random().toString(36).slice(2, 10);
@@ -64,6 +66,7 @@ function FontStyles() {
         background: transparent;
       }
       .att-checkbox.checked { background: ${COLORS.present}; border-color: ${COLORS.present}; }
+      .att-checkbox.disabled { opacity: 0.35; cursor: not-allowed; }
       .att-row:hover .att-actions { opacity: 1; }
       .att-actions { opacity: 0; transition: opacity 0.15s ease; display: flex; gap: 4px; }
       .att-scroll::-webkit-scrollbar { width: 6px; height: 6px; }
@@ -80,6 +83,16 @@ function FontStyles() {
       }
       @media (max-width: 640px) {
         .att-navlabel { display: none; }
+      }
+      .day-pill {
+        padding: 6px 14px; border-radius: 999px; font-size: 12.5px; font-weight: 500;
+        border: 1px solid ${COLORS.border}; background: ${COLORS.surface2}; color: ${COLORS.textMuted};
+        cursor: pointer; white-space: nowrap; transition: all 0.15s ease;
+      }
+      .day-pill.active { background: ${COLORS.accentDim}; border-color: ${COLORS.accent}; color: ${COLORS.accent}; }
+      .cancel-badge {
+        font-size: 10px; font-family: 'IBM Plex Mono', monospace; padding: 1px 7px; border-radius: 999px;
+        background: ${COLORS.dangerDim}; color: ${COLORS.danger}; text-transform: uppercase; letter-spacing: 0.03em;
       }
     `}</style>
   );
@@ -121,10 +134,26 @@ function IconChevron({ dir = "left" }) {
     </svg>
   );
 }
- 
-function Checkbox({ checked, onClick }) {
+function IconBan({ color = COLORS.danger }) {
   return (
-    <div className={`att-checkbox${checked ? " checked" : ""}`} onClick={onClick}>
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none">
+      <circle cx="12" cy="12" r="9" stroke={color} strokeWidth="2" />
+      <path d="M5.5 5.5l13 13" stroke={color} strokeWidth="2" strokeLinecap="round" />
+    </svg>
+  );
+}
+function IconUndo({ color = COLORS.accent }) {
+  return (
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none">
+      <path d="M9 14l-4-4 4-4" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+      <path d="M5 10h9a5 5 0 015 5v1" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  );
+}
+ 
+function Checkbox({ checked, onClick, disabled }) {
+  return (
+    <div className={`att-checkbox${checked ? " checked" : ""}${disabled ? " disabled" : ""}`} onClick={disabled ? undefined : onClick}>
       {checked && <IconCheck />}
     </div>
   );
@@ -149,7 +178,7 @@ function getEntriesForDate(data, key) {
   const dayKey = JS_DAY_TO_KEY[d.getDay()];
   if (!DAYS.includes(dayKey)) return [];
   const template = data.template[dayKey] || [];
-  return template.map((t) => ({ id: uid(), templateId: t.id, time: t.time, subjectId: t.subjectId, attended: false }));
+  return template.map((t) => ({ id: uid(), templateId: t.id, time: t.time, subjectId: t.subjectId, attended: false, cancelled: false }));
 }
  
 export default function App() {
@@ -166,11 +195,10 @@ export default function App() {
         const merged = emptyData();
         if (Array.isArray(parsed.subjects) && parsed.subjects.length) merged.subjects = parsed.subjects;
  
-        // migrate template: old versions stored free-text `subject`, new stores `subjectId`
         if (parsed.template) {
           DAYS.forEach((d) => {
             merged.template[d] = (parsed.template[d] || []).map((c) => {
-              if (c.subjectId) return c;
+              if (c.subjectId) return { id: c.id, time: c.time, subjectId: c.subjectId };
               const match = merged.subjects.find((s) => s.name.trim().toLowerCase() === String(c.subject || "").trim().toLowerCase());
               return { id: c.id, time: c.time, subjectId: match ? match.id : merged.subjects[0]?.id || null };
             });
@@ -193,9 +221,9 @@ export default function App() {
           Object.entries(parsed.records).forEach(([key, rec]) => {
             migratedRecords[key] = {
               entries: (rec.entries || []).map((e) => {
-                if (e.subjectId) return e;
+                if (e.subjectId) return { ...e, cancelled: !!e.cancelled };
                 const match = merged.subjects.find((s) => s.name.trim().toLowerCase() === String(e.subject || "").trim().toLowerCase());
-                return { id: e.id, templateId: e.templateId || null, time: e.time, subjectId: match ? match.id : merged.subjects[0]?.id || null, attended: !!e.attended };
+                return { id: e.id, templateId: e.templateId || null, time: e.time, subjectId: match ? match.id : merged.subjects[0]?.id || null, attended: !!e.attended, cancelled: !!e.cancelled };
               }),
             };
           });
@@ -227,7 +255,7 @@ export default function App() {
   const toggleEntry = (key, entryId) => {
     setData((d) => {
       const records = ensureRecord(d, key);
-      const entries = records[key].entries.map((e) => (e.id === entryId ? { ...e, attended: !e.attended } : e));
+      const entries = records[key].entries.map((e) => (e.id === entryId && !e.cancelled ? { ...e, attended: !e.attended } : e));
       return { ...d, records: { ...records, [key]: { entries } } };
     });
   };
@@ -235,7 +263,7 @@ export default function App() {
     if (!subjectId) return;
     setData((d) => {
       const records = ensureRecord(d, key);
-      const entries = [...records[key].entries, { id: uid(), templateId: null, time: time || "9:00 - 10:00", subjectId, attended: false }];
+      const entries = [...records[key].entries, { id: uid(), templateId: null, time: time || "9:00 - 10:00", subjectId, attended: false, cancelled: false }];
       return { ...d, records: { ...records, [key]: { entries } } };
     });
   };
@@ -250,6 +278,15 @@ export default function App() {
     setData((d) => {
       const records = ensureRecord(d, key);
       const entries = records[key].entries.filter((e) => e.id !== entryId);
+      return { ...d, records: { ...records, [key]: { entries } } };
+    });
+  };
+  const toggleCancelEntry = (key, entryId) => {
+    setData((d) => {
+      const records = ensureRecord(d, key);
+      const entries = records[key].entries.map((e) =>
+        e.id === entryId ? { ...e, cancelled: !e.cancelled, attended: e.cancelled ? e.attended : false } : e
+      );
       return { ...d, records: { ...records, [key]: { entries } } };
     });
   };
@@ -281,7 +318,19 @@ export default function App() {
     setData((d) => ({ ...d, subjects: d.subjects.map((s) => (s.id === subjectId ? { ...s, todos: s.todos.filter((t) => t.id !== todoId) } : s)) }));
   };
  
-  const allRecordedEntries = useMemo(() => Object.values(data.records).flatMap((r) => r.entries), [data.records]);
+  // ---- weekly template ops ----
+  const addTemplateClass = (day, time, subjectId) => {
+    if (!subjectId) return;
+    setData((d) => ({ ...d, template: { ...d.template, [day]: [...(d.template[day] || []), { id: uid(), time: time || "9:00 - 10:00", subjectId }] } }));
+  };
+  const updateTemplateClass = (day, classId, time, subjectId) => {
+    setData((d) => ({ ...d, template: { ...d.template, [day]: (d.template[day] || []).map((c) => (c.id === classId ? { ...c, time, subjectId } : c)) } }));
+  };
+  const deleteTemplateClass = (day, classId) => {
+    setData((d) => ({ ...d, template: { ...d.template, [day]: (d.template[day] || []).filter((c) => c.id !== classId) } }));
+  };
+ 
+  const allRecordedEntries = useMemo(() => Object.values(data.records).flatMap((r) => r.entries).filter((e) => !e.cancelled), [data.records]);
   const overallTotal = allRecordedEntries.length;
   const overallAttended = allRecordedEntries.filter((e) => e.attended).length;
   const overallPct = overallTotal ? Math.round((overallAttended / overallTotal) * 100) : 0;
@@ -321,6 +370,7 @@ export default function App() {
         <div style={{ maxWidth: 960, margin: "0 auto", display: "flex", gap: 4, padding: "0 20px", overflowX: "auto" }}>
           <NavTab active={tab === "overview"} onClick={() => setTab("overview")} label="Overview" />
           <NavTab active={tab === "calendar"} onClick={() => setTab("calendar")} label="Calendar" badge={`${overallAttended}/${overallTotal}`} />
+          <NavTab active={tab === "weekly"} onClick={() => setTab("weekly")} label="Weekly setup" />
           <NavTab active={tab === "assignments"} onClick={() => setTab("assignments")} label="Assignments" badge={pendingAssignments ? String(pendingAssignments) : null} />
           <NavTab active={tab === "subjects"} onClick={() => setTab("subjects")} label="Subject todos" badge={`${doneTodos}/${totalTodos}`} />
         </div>
@@ -350,6 +400,16 @@ export default function App() {
             onAdd={(time, subjectId) => addEntry(selectedDate, time, subjectId)}
             onUpdate={(id, time, subjectId) => updateEntry(selectedDate, id, time, subjectId)}
             onDelete={(id) => deleteEntry(selectedDate, id)}
+            onToggleCancel={(id) => toggleCancelEntry(selectedDate, id)}
+          />
+        )}
+        {tab === "weekly" && (
+          <WeeklySetupTab
+            template={data.template}
+            subjects={data.subjects}
+            onAdd={addTemplateClass}
+            onUpdate={updateTemplateClass}
+            onDelete={deleteTemplateClass}
           />
         )}
         {tab === "assignments" && (
@@ -460,8 +520,8 @@ function OverviewTab({ overallPct, overallAttended, overallTotal, pendingAssignm
   );
 }
  
-// shared inline row for a class entry with select-based subject + inline edit
-function ClassRow({ entry, subjects, showCheckbox, checked, onToggleCheck, onSave, onDelete }) {
+// shared inline row for a class entry with select-based subject + inline edit + cancel support
+function ClassRow({ entry, subjects, showCheckbox, checked, onToggleCheck, onSave, onDelete, onToggleCancel, cancelled }) {
   const [editing, setEditing] = useState(false);
   const [time, setTime] = useState(entry.time);
   const [subjectId, setSubjectId] = useState(entry.subjectId);
@@ -493,16 +553,25 @@ function ClassRow({ entry, subjects, showCheckbox, checked, onToggleCheck, onSav
         display: "flex",
         alignItems: "center",
         gap: 12,
-        background: checked ? COLORS.presentDim : COLORS.surface2,
-        border: `1px solid ${checked ? COLORS.present + "55" : COLORS.border}`,
+        background: cancelled ? COLORS.cancelledDim : checked ? COLORS.presentDim : COLORS.surface2,
+        border: `1px solid ${cancelled ? COLORS.borderStrong : checked ? COLORS.present + "55" : COLORS.border}`,
         borderRadius: 10,
         padding: "10px 12px",
+        opacity: cancelled ? 0.75 : 1,
       }}
     >
-      {showCheckbox && <Checkbox checked={checked} onClick={onToggleCheck} />}
+      {showCheckbox && <Checkbox checked={checked} onClick={onToggleCheck} disabled={cancelled} />}
       <span style={{ fontFamily: "'IBM Plex Mono', monospace", fontSize: 12, color: COLORS.textMuted, minWidth: 96 }}>{entry.time}</span>
-      <span style={{ fontSize: 14, fontWeight: 500, flex: 1 }}>{subjectName(subjects, entry.subjectId)}</span>
+      <span style={{ fontSize: 14, fontWeight: 500, flex: 1, textDecoration: cancelled ? "line-through" : "none", color: cancelled ? COLORS.textFaint : COLORS.text }}>
+        {subjectName(subjects, entry.subjectId)}
+      </span>
+      {cancelled && <span className="cancel-badge">Cancelled</span>}
       <div className="att-actions">
+        {onToggleCancel && (
+          <button onClick={onToggleCancel} style={{ background: "transparent", border: "none", padding: 4, display: "flex" }} aria-label={cancelled ? "Restore class" : "Cancel class"} title={cancelled ? "Restore class" : "Mark cancelled"}>
+            {cancelled ? <IconUndo /> : <IconBan />}
+          </button>
+        )}
         <button onClick={() => setEditing(true)} style={{ background: "transparent", border: "none", padding: 4, display: "flex" }} aria-label="Edit">
           <IconPencil />
         </button>
@@ -543,7 +612,7 @@ function AddClassForm({ subjects, onAdd }) {
   );
 }
  
-function CalendarTab({ data, subjects, selectedDate, setSelectedDate, entries, onToggle, onAdd, onUpdate, onDelete }) {
+function CalendarTab({ data, subjects, selectedDate, setSelectedDate, entries, onToggle, onAdd, onUpdate, onDelete, onToggleCancel }) {
   const [cursor, setCursor] = useState(() => {
     const d = new Date(selectedDate + "T00:00:00");
     return { year: d.getFullYear(), month: d.getMonth() };
@@ -560,7 +629,7 @@ function CalendarTab({ data, subjects, selectedDate, setSelectedDate, entries, o
  
   const pctForKey = (key) => {
     const rec = data.records[key];
-    const list = rec ? rec.entries : getEntriesForDate(data, key);
+    const list = (rec ? rec.entries : getEntriesForDate(data, key)).filter((e) => !e.cancelled);
     if (!list.length) return null;
     const att = list.filter((e) => e.attended).length;
     return { pct: Math.round((att / list.length) * 100), total: list.length, hasRecord: !!rec };
@@ -573,8 +642,9 @@ function CalendarTab({ data, subjects, selectedDate, setSelectedDate, entries, o
     const key = `${cursor.year}-${pad2(cursor.month + 1)}-${pad2(day)}`;
     const rec = data.records[key];
     if (rec) {
-      monthTotal += rec.entries.length;
-      monthAttended += rec.entries.filter((e) => e.attended).length;
+      const active = rec.entries.filter((e) => !e.cancelled);
+      monthTotal += active.length;
+      monthAttended += active.filter((e) => e.attended).length;
     }
   }
   const monthPct = monthTotal ? Math.round((monthAttended / monthTotal) * 100) : null;
@@ -594,7 +664,8 @@ function CalendarTab({ data, subjects, selectedDate, setSelectedDate, entries, o
     setSelectedDate(t);
   };
  
-  const dayAttended = entries.filter((e) => e.attended).length;
+  const activeEntries = entries.filter((e) => !e.cancelled);
+  const dayAttended = activeEntries.filter((e) => e.attended).length;
   const selectedD = new Date(selectedDate + "T00:00:00");
   const selectedLabel = selectedD.toLocaleDateString("en-US", { weekday: "long", day: "numeric", month: "long" });
   const isSelectedToday = selectedDate === todayKey();
@@ -646,7 +717,7 @@ function CalendarTab({ data, subjects, selectedDate, setSelectedDate, entries, o
           })}
         </div>
  
-        <div style={{ display: "flex", gap: 16, marginTop: 18, paddingTop: 14, borderTop: `1px solid ${COLORS.border}` }}>
+        <div style={{ display: "flex", gap: 16, marginTop: 18, paddingTop: 14, borderTop: `1px solid ${COLORS.border}`, flexWrap: "wrap" }}>
           <div style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 11.5, color: COLORS.textMuted }}>
             <div className="cal-dot" style={{ background: COLORS.present }} /> 75%+ attended
           </div>
@@ -662,20 +733,20 @@ function CalendarTab({ data, subjects, selectedDate, setSelectedDate, entries, o
             <h2 style={{ fontFamily: "'Fraunces', serif", fontWeight: 600, fontSize: 19, margin: 0 }}><Highlight>{selectedLabel}</Highlight></h2>
             {isSelectedToday && <span style={{ fontSize: 11, color: COLORS.accent, fontFamily: "'IBM Plex Mono', monospace" }}>today</span>}
           </div>
-          {entries.length > 0 && (
-            <span style={{ fontFamily: "'IBM Plex Mono', monospace", fontSize: 12, color: COLORS.textMuted, marginTop: 4 }}>{dayAttended}/{entries.length} attended</span>
+          {activeEntries.length > 0 && (
+            <span style={{ fontFamily: "'IBM Plex Mono', monospace", fontSize: 12, color: COLORS.textMuted, marginTop: 4 }}>{dayAttended}/{activeEntries.length} attended</span>
           )}
         </div>
  
-        {entries.length > 0 && (
+        {activeEntries.length > 0 && (
           <div className="att-bar-track" style={{ margin: "12px 0 16px" }}>
-            <div className="att-bar-fill" style={{ width: `${entries.length ? Math.round((dayAttended / entries.length) * 100) : 0}%`, background: dayAttended / entries.length >= 0.75 ? COLORS.present : COLORS.danger }} />
+            <div className="att-bar-fill" style={{ width: `${activeEntries.length ? Math.round((dayAttended / activeEntries.length) * 100) : 0}%`, background: dayAttended / activeEntries.length >= 0.75 ? COLORS.present : COLORS.danger }} />
           </div>
         )}
  
         {entries.length === 0 && (
           <div style={{ color: COLORS.textFaint, fontSize: 13, padding: "12px 0 20px" }}>
-            No classes recorded for this date yet — add one below.
+            No classes recorded for this date yet — add one below, or check Weekly setup.
           </div>
         )}
  
@@ -687,15 +758,71 @@ function CalendarTab({ data, subjects, selectedDate, setSelectedDate, entries, o
               subjects={subjects}
               showCheckbox
               checked={e.attended}
+              cancelled={!!e.cancelled}
               onToggleCheck={() => onToggle(e.id)}
               onSave={(time, subjectId) => onUpdate(e.id, time, subjectId)}
               onDelete={() => onDelete(e.id)}
+              onToggleCancel={() => onToggleCancel(e.id)}
             />
           ))}
         </div>
  
         <div style={{ paddingTop: entries.length ? 14 : 0, borderTop: entries.length ? `1px solid ${COLORS.border}` : "none" }}>
+          <SectionLabel>Add a class for this day</SectionLabel>
           <AddClassForm subjects={subjects} onAdd={onAdd} />
+        </div>
+      </Card>
+    </div>
+  );
+}
+ 
+function WeeklySetupTab({ template, subjects, onAdd, onUpdate, onDelete }) {
+  const [activeDay, setActiveDay] = useState(DAYS[0]);
+  const classes = template[activeDay] || [];
+ 
+  return (
+    <div>
+      <SectionLabel>Weekly timetable</SectionLabel>
+      <div style={{ color: COLORS.textFaint, fontSize: 12.5, marginBottom: 16 }}>
+        Set your recurring classes for each weekday. These auto-fill the Calendar for any date that doesn't already have its own entries — edit a specific day in Calendar to override just that date.
+      </div>
+ 
+      <div style={{ display: "flex", gap: 8, marginBottom: 18, overflowX: "auto", paddingBottom: 4 }}>
+        {DAYS.map((d) => (
+          <button key={d} className={`day-pill${activeDay === d ? " active" : ""}`} onClick={() => setActiveDay(d)}>
+            {FULL_DAY[d]} <span style={{ opacity: 0.7 }}>({(template[d] || []).length})</span>
+          </button>
+        ))}
+      </div>
+ 
+      <Card style={{ borderLeft: `3px solid ${COLORS.accent}`, borderRadius: "6px 14px 14px 6px" }}>
+        <h3 style={{ fontFamily: "'Fraunces', serif", fontWeight: 600, fontSize: 17, margin: "0 0 14px" }}>
+          <Highlight>{FULL_DAY[activeDay]}</Highlight>
+        </h3>
+ 
+        {classes.length === 0 && (
+          <div style={{ color: COLORS.textFaint, fontSize: 13, padding: "6px 0 16px" }}>
+            No recurring classes set for {FULL_DAY[activeDay]} yet.
+          </div>
+        )}
+ 
+        <div className="att-scroll" style={{ display: "flex", flexDirection: "column", gap: 8, marginBottom: classes.length ? 18 : 0, maxHeight: 380, overflowY: "auto" }}>
+          {classes.map((c) => (
+            <ClassRow
+              key={c.id}
+              entry={{ ...c, attended: false }}
+              subjects={subjects}
+              showCheckbox={false}
+              checked={false}
+              cancelled={false}
+              onSave={(time, subjectId) => onUpdate(activeDay, c.id, time, subjectId)}
+              onDelete={() => onDelete(activeDay, c.id)}
+            />
+          ))}
+        </div>
+ 
+        <div style={{ paddingTop: classes.length ? 14 : 0, borderTop: classes.length ? `1px solid ${COLORS.border}` : "none" }}>
+          <AddClassForm subjects={subjects} onAdd={(time, subjectId) => onAdd(activeDay, time, subjectId)} />
         </div>
       </Card>
     </div>
