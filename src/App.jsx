@@ -6,22 +6,25 @@ const JS_DAY_TO_KEY = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 const STORAGE_KEY = "attendance-tracker-v5";
  
 const COLORS = {
-  bg: "#14161B",
-  surface1: "#1C1F26",
-  surface2: "#242833",
-  border: "#33384433",
-  borderStrong: "#3E4552",
-  text: "#ECE9E3",
-  textMuted: "#8D93A1",
-  textFaint: "#5D6472",
-  accent: "#E5A94A",
-  accentDim: "#E5A94A22",
-  present: "#6FCB9B",
-  presentDim: "#6FCB9B22",
-  danger: "#E2677C",
-  dangerDim: "#E2677C22",
-  cancelled: "#8D93A1",
-  cancelledDim: "#8D93A122",
+  bg: "#1A1626",
+  surface1: "#241D36",
+  surface2: "#2E2545",
+  border: "#3D3459",
+  borderStrong: "#544A78",
+  text: "#F6F1FF",
+  textMuted: "#B6A9D6",
+  textFaint: "#7C6FA0",
+  accent: "#FF9FD1",
+  accentDim: "#FF9FD11f",
+  accent2: "#B7A6FF",
+  accent2Dim: "#B7A6FF22",
+  present: "#8CEFC2",
+  presentDim: "#8CEFC222",
+  danger: "#FF9270",
+  dangerDim: "#FF927022",
+  cancelled: "#9088AE",
+  cancelledDim: "#9088AE22",
+  ink: "#3A1032",
 };
  
 const uid = () => Math.random().toString(36).slice(2, 10);
@@ -43,40 +46,51 @@ function emptyData() {
 function FontStyles() {
   return (
     <style>{`
-      @import url('https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,600&family=Inter:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap');
+      @import url('https://fonts.googleapis.com/css2?family=Fredoka:wght@500;600;700&family=Quicksand:wght@400;500;600;700&family=Space+Mono:wght@400;700&display=swap');
       .att-app * { box-sizing: border-box; }
       .att-app input, .att-app select {
         background: ${COLORS.surface2};
-        border: 1px solid ${COLORS.border};
+        border: 1.5px solid ${COLORS.border};
         color: ${COLORS.text};
-        font-family: 'Inter', sans-serif;
-        border-radius: 8px;
-        padding: 8px 10px;
+        font-family: 'Quicksand', sans-serif;
+        font-weight: 600;
+        border-radius: 12px;
+        padding: 8px 12px;
         font-size: 13px;
         outline: none;
+        transition: border-color 0.15s ease, box-shadow 0.15s ease;
       }
-      .att-app input::placeholder { color: ${COLORS.textFaint}; }
-      .att-app input:focus, .att-app select:focus { border-color: ${COLORS.accent}; }
-      .att-app button { font-family: 'Inter', sans-serif; cursor: pointer; }
+      .att-app input::placeholder { color: ${COLORS.textFaint}; font-weight: 500; }
+      .att-app input:focus, .att-app select:focus { border-color: ${COLORS.accent}; box-shadow: 0 0 0 3px ${COLORS.accentDim}; }
+      .att-app button { font-family: 'Quicksand', sans-serif; font-weight: 600; cursor: pointer; }
+      @keyframes att-pop {
+        0% { transform: scale(0.7); }
+        60% { transform: scale(1.15); }
+        100% { transform: scale(1); }
+      }
+      @keyframes att-twinkle {
+        0%, 100% { opacity: 0.5; transform: scale(1); }
+        50% { opacity: 1; transform: scale(1.25); }
+      }
       .att-checkbox {
-        width: 20px; height: 20px; border-radius: 6px;
-        border: 1.5px solid ${COLORS.borderStrong};
+        width: 22px; height: 22px; border-radius: 9px;
+        border: 2px solid ${COLORS.borderStrong};
         display: flex; align-items: center; justify-content: center;
         cursor: pointer; flex-shrink: 0; transition: all 0.15s ease;
         background: transparent;
       }
-      .att-checkbox.checked { background: ${COLORS.present}; border-color: ${COLORS.present}; }
+      .att-checkbox.checked { background: ${COLORS.present}; border-color: ${COLORS.present}; box-shadow: 0 0 0 4px ${COLORS.presentDim}; animation: att-pop 0.25s ease; }
       .att-checkbox.disabled { opacity: 0.35; cursor: not-allowed; }
       .att-row:hover .att-actions { opacity: 1; }
       .att-actions { opacity: 0; transition: opacity 0.15s ease; display: flex; gap: 4px; }
-      .att-scroll::-webkit-scrollbar { width: 6px; height: 6px; }
-      .att-scroll::-webkit-scrollbar-thumb { background: ${COLORS.borderStrong}; border-radius: 4px; }
-      .att-bar-track { height: 6px; border-radius: 4px; background: ${COLORS.surface2}; overflow: hidden; }
-      .att-bar-fill { height: 100%; border-radius: 4px; transition: width 0.25s ease; }
-      .cal-cell { aspect-ratio: 1; min-height: 52px; border-radius: 10px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 3px; cursor: pointer; border: 1px solid transparent; transition: all 0.12s ease; }
-      .cal-cell:hover { border-color: ${COLORS.accent}88; background: ${COLORS.surface2}; }
-      .cal-cell.selected { box-shadow: 0 4px 14px ${COLORS.accent}44; }
-      .cal-dot { width: 5px; height: 5px; border-radius: 50%; }
+      .att-scroll::-webkit-scrollbar { width: 7px; height: 7px; }
+      .att-scroll::-webkit-scrollbar-thumb { background: ${COLORS.accent2}; border-radius: 8px; opacity: 0.6; }
+      .att-bar-track { height: 8px; border-radius: 999px; background: ${COLORS.surface2}; overflow: hidden; }
+      .att-bar-fill { height: 100%; border-radius: 999px; transition: width 0.3s ease; }
+      .cal-cell { aspect-ratio: 1; min-height: 52px; border-radius: 14px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px; cursor: pointer; border: 1.5px solid transparent; transition: all 0.12s ease; }
+      .cal-cell:hover { border-color: ${COLORS.accent}aa; background: ${COLORS.surface2}; }
+      .cal-cell.selected { box-shadow: 0 6px 18px ${COLORS.accent}55; }
+      .cal-dot { width: 6px; height: 6px; border-radius: 50%; }
       .cal-layout { display: flex; flex-direction: column; gap: 18px; }
       @media (min-width: 760px) {
         .cal-layout { display: grid; grid-template-columns: 1.15fr 1fr; align-items: start; gap: 18px; }
@@ -85,15 +99,22 @@ function FontStyles() {
         .att-navlabel { display: none; }
       }
       .day-pill {
-        padding: 6px 14px; border-radius: 999px; font-size: 12.5px; font-weight: 500;
-        border: 1px solid ${COLORS.border}; background: ${COLORS.surface2}; color: ${COLORS.textMuted};
+        padding: 7px 16px; border-radius: 999px; font-size: 12.5px; font-weight: 600;
+        border: 1.5px solid ${COLORS.border}; background: ${COLORS.surface2}; color: ${COLORS.textMuted};
         cursor: pointer; white-space: nowrap; transition: all 0.15s ease;
       }
-      .day-pill.active { background: ${COLORS.accentDim}; border-color: ${COLORS.accent}; color: ${COLORS.accent}; }
+      .day-pill.active { background: linear-gradient(135deg, ${COLORS.accentDim}, ${COLORS.accent2Dim}); border-color: ${COLORS.accent}; color: ${COLORS.accent}; }
       .cancel-badge {
-        font-size: 10px; font-family: 'IBM Plex Mono', monospace; padding: 1px 7px; border-radius: 999px;
-        background: ${COLORS.dangerDim}; color: ${COLORS.danger}; text-transform: uppercase; letter-spacing: 0.03em;
+        font-size: 10.5px; font-family: 'Quicksand', sans-serif; font-weight: 700; padding: 2px 9px; border-radius: 999px;
+        background: ${COLORS.dangerDim}; color: ${COLORS.danger};
       }
+      .nav-pill {
+        background: transparent; border: none; padding: 8px 16px; margin: 8px 2px;
+        color: ${COLORS.textMuted}; font-size: 13.5px; font-weight: 600; border-radius: 999px;
+        display: flex; align-items: center; gap: 8px; white-space: nowrap; transition: all 0.15s ease;
+      }
+      .nav-pill.active { background: linear-gradient(135deg, ${COLORS.accentDim}, ${COLORS.accent2Dim}); color: ${COLORS.text}; box-shadow: inset 0 0 0 1.5px ${COLORS.accent}66; }
+      .twinkle { animation: att-twinkle 2.4s ease-in-out infinite; }
     `}</style>
   );
 }
@@ -101,7 +122,7 @@ function FontStyles() {
 function IconCheck() {
   return (
     <svg width="13" height="13" viewBox="0 0 24 24" fill="none">
-      <path d="M20 6L9 17l-5-5" stroke={COLORS.bg} strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" />
+      <path d="M20 6L9 17l-5-5" stroke={COLORS.ink} strokeWidth="3.5" strokeLinecap="round" strokeLinejoin="round" />
     </svg>
   );
 }
@@ -119,10 +140,10 @@ function IconPencil({ color = COLORS.textFaint }) {
     </svg>
   );
 }
-function IconPlus({ color = COLORS.bg }) {
+function IconPlus({ color = COLORS.ink }) {
   return (
     <svg width="14" height="14" viewBox="0 0 24 24" fill="none">
-      <path d="M12 5v14M5 12h14" stroke={color} strokeWidth="2.5" strokeLinecap="round" />
+      <path d="M12 5v14M5 12h14" stroke={color} strokeWidth="3" strokeLinecap="round" />
     </svg>
   );
 }
@@ -130,23 +151,29 @@ function IconChevron({ dir = "left" }) {
   const d = dir === "left" ? "M15 18l-6-6 6-6" : "M9 18l6-6-6-6";
   return (
     <svg width="18" height="18" viewBox="0 0 24 24" fill="none">
-      <path d={d} stroke={COLORS.textMuted} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+      <path d={d} stroke={COLORS.textMuted} strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" />
     </svg>
   );
 }
-function IconBan({ color = COLORS.danger }) {
+function IconMoon({ color = COLORS.danger }) {
   return (
     <svg width="14" height="14" viewBox="0 0 24 24" fill="none">
-      <circle cx="12" cy="12" r="9" stroke={color} strokeWidth="2" />
-      <path d="M5.5 5.5l13 13" stroke={color} strokeWidth="2" strokeLinecap="round" />
+      <path d="M20 14.5A8.5 8.5 0 119.5 4a7 7 0 0010.5 10.5z" stroke={color} strokeWidth="2" strokeLinejoin="round" fill={color} fillOpacity="0.15" />
     </svg>
   );
 }
-function IconUndo({ color = COLORS.accent }) {
+function IconSun({ color = COLORS.accent2 }) {
   return (
     <svg width="14" height="14" viewBox="0 0 24 24" fill="none">
-      <path d="M9 14l-4-4 4-4" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
-      <path d="M5 10h9a5 5 0 015 5v1" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+      <circle cx="12" cy="12" r="4" stroke={color} strokeWidth="2" />
+      <path d="M12 2v2M12 20v2M4.2 4.2l1.4 1.4M18.4 18.4l1.4 1.4M2 12h2M20 12h2M4.2 19.8l1.4-1.4M18.4 5.6l1.4-1.4" stroke={color} strokeWidth="2" strokeLinecap="round" />
+    </svg>
+  );
+}
+function IconStar({ size = 12, color = COLORS.accent, className }) {
+  return (
+    <svg className={className} width={size} height={size} viewBox="0 0 24 24" fill="none">
+      <path d="M12 2l2.2 6.6L21 11l-6.8 2.4L12 20l-2.2-6.6L3 11l6.8-2.4L12 2z" fill={color} />
     </svg>
   );
 }
@@ -161,8 +188,9 @@ function Checkbox({ checked, onClick, disabled }) {
  
 function Highlight({ children }) {
   return (
-    <span style={{ background: `linear-gradient(180deg, transparent 60%, ${COLORS.accentDim} 60%)`, padding: "0 2px" }}>
-      {children}
+    <span style={{ position: "relative", display: "inline-block" }}>
+      <span style={{ position: "relative", zIndex: 1 }}>{children}</span>
+      <span style={{ position: "absolute", left: -3, right: -3, bottom: 2, height: "38%", background: `linear-gradient(90deg, ${COLORS.accent}55, ${COLORS.accent2}55)`, borderRadius: 6, zIndex: 0 }} />
     </span>
   );
 }
@@ -352,22 +380,33 @@ export default function App() {
   const selectedEntries = data.records[selectedDate] ? data.records[selectedDate].entries : getEntriesForDate(data, selectedDate);
  
   return (
-    <div className="att-app" style={{ background: COLORS.bg, minHeight: "100vh", fontFamily: "'Inter', sans-serif", color: COLORS.text, padding: "0 0 60px" }}>
+    <div
+      className="att-app"
+      style={{
+        background: `${COLORS.bg}`,
+        backgroundImage: `radial-gradient(circle at 12% 8%, ${COLORS.accent}14, transparent 38%), radial-gradient(circle at 85% 0%, ${COLORS.accent2}1c, transparent 36%), radial-gradient(circle at 60% 100%, ${COLORS.present}12, transparent 40%)`,
+        minHeight: "100vh",
+        fontFamily: "'Quicksand', sans-serif",
+        color: COLORS.text,
+        padding: "0 0 60px",
+      }}
+    >
       <FontStyles />
  
-      <div style={{ padding: "28px 20px 8px", maxWidth: 960, margin: "0 auto" }}>
+      <div style={{ padding: "30px 20px 8px", maxWidth: 960, margin: "0 auto" }}>
         <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", flexWrap: "wrap", gap: 8 }}>
-          <h1 style={{ fontFamily: "'Fraunces', serif", fontWeight: 600, fontSize: 28, margin: 0, letterSpacing: "-0.01em" }}>
+          <h1 style={{ fontFamily: "'Fredoka', sans-serif", fontWeight: 600, fontSize: 29, margin: 0, letterSpacing: "-0.01em", display: "flex", alignItems: "center", gap: 8 }}>
+            <IconStar size={18} className="twinkle" />
             <Highlight>Class tracker</Highlight>
           </h1>
-          <div style={{ fontFamily: "'IBM Plex Mono', monospace", fontSize: 12, color: COLORS.textMuted }}>
-            overall attendance <span style={{ color: overallPct >= 75 ? COLORS.present : COLORS.danger, fontWeight: 500 }}>{overallPct}%</span>
+          <div style={{ fontFamily: "'Space Mono', monospace", fontSize: 12, color: COLORS.textMuted, background: COLORS.surface1, padding: "5px 12px", borderRadius: 999, border: `1.5px solid ${COLORS.border}` }}>
+            attendance <span style={{ color: overallPct >= 75 ? COLORS.present : COLORS.danger, fontWeight: 700 }}>{overallPct}%</span>
           </div>
         </div>
       </div>
  
-      <div style={{ position: "sticky", top: 0, zIndex: 10, background: `${COLORS.bg}f2`, backdropFilter: "blur(6px)", borderBottom: `1px solid ${COLORS.border}`, marginTop: 12 }}>
-        <div style={{ maxWidth: 960, margin: "0 auto", display: "flex", gap: 4, padding: "0 20px", overflowX: "auto" }}>
+      <div style={{ position: "sticky", top: 0, zIndex: 10, background: `${COLORS.bg}f0`, backdropFilter: "blur(8px)", borderBottom: `1.5px solid ${COLORS.border}`, marginTop: 14 }}>
+        <div style={{ maxWidth: 960, margin: "0 auto", display: "flex", gap: 2, padding: "0 16px", overflowX: "auto" }}>
           <NavTab active={tab === "overview"} onClick={() => setTab("overview")} label="Overview" />
           <NavTab active={tab === "calendar"} onClick={() => setTab("calendar")} label="Calendar" badge={`${overallAttended}/${overallTotal}`} />
           <NavTab active={tab === "weekly"} onClick={() => setTab("weekly")} label="Weekly setup" />
@@ -425,27 +464,10 @@ export default function App() {
  
 function NavTab({ active, onClick, label, badge }) {
   return (
-    <button
-      onClick={onClick}
-      style={{
-        background: "transparent",
-        border: "none",
-        padding: "14px 4px",
-        marginRight: 22,
-        color: active ? COLORS.text : COLORS.textMuted,
-        fontSize: 14,
-        fontWeight: 500,
-        borderBottom: active ? `2px solid ${COLORS.accent}` : "2px solid transparent",
-        display: "flex",
-        alignItems: "center",
-        gap: 8,
-        whiteSpace: "nowrap",
-        transition: "color 0.15s ease",
-      }}
-    >
+    <button onClick={onClick} className={`nav-pill${active ? " active" : ""}`}>
       <span className="att-navlabel">{label}</span>
       {badge && (
-        <span style={{ fontFamily: "'IBM Plex Mono', monospace", fontSize: 11, background: active ? COLORS.accentDim : COLORS.surface2, color: active ? COLORS.accent : COLORS.textFaint, padding: "1px 7px", borderRadius: 999 }}>
+        <span style={{ fontFamily: "'Space Mono', monospace", fontSize: 11, background: active ? `${COLORS.bg}55` : COLORS.surface2, color: active ? COLORS.accent : COLORS.textFaint, padding: "1px 8px", borderRadius: 999 }}>
           {badge}
         </span>
       )}
@@ -454,15 +476,18 @@ function NavTab({ active, onClick, label, badge }) {
 }
  
 function Card({ children, style }) {
-  return <div style={{ background: COLORS.surface1, border: `1px solid ${COLORS.border}`, borderRadius: 14, padding: "18px 18px", ...style }}>{children}</div>;
+  return <div style={{ background: COLORS.surface1, border: `1.5px solid ${COLORS.border}`, borderRadius: 20, padding: "18px 18px", ...style }}>{children}</div>;
 }
  
-function MetricCard({ label, value, sub }) {
+function MetricCard({ label, value, sub, emoji }) {
   return (
-    <div style={{ background: COLORS.surface1, border: `1px solid ${COLORS.border}`, borderRadius: 12, padding: "14px 16px" }}>
-      <div style={{ fontSize: 12, color: COLORS.textMuted, marginBottom: 6 }}>{label}</div>
-      <div style={{ fontFamily: "'Fraunces', serif", fontWeight: 600, fontSize: 24 }}>{value}</div>
-      {sub && <div style={{ fontSize: 11.5, color: COLORS.textFaint, marginTop: 3 }}>{sub}</div>}
+    <div style={{ background: COLORS.surface1, border: `1.5px solid ${COLORS.border}`, borderRadius: 16, padding: "14px 16px" }}>
+      <div style={{ fontSize: 12, color: COLORS.textMuted, marginBottom: 6, display: "flex", alignItems: "center", gap: 6, fontWeight: 600 }}>
+        {emoji && <span style={{ fontSize: 14 }}>{emoji}</span>}
+        {label}
+      </div>
+      <div style={{ fontFamily: "'Fredoka', sans-serif", fontWeight: 600, fontSize: 25 }}>{value}</div>
+      {sub && <div style={{ fontSize: 11.5, color: COLORS.textFaint, marginTop: 3, fontWeight: 500 }}>{sub}</div>}
     </div>
   );
 }
@@ -470,23 +495,23 @@ function MetricCard({ label, value, sub }) {
 function StatBit({ label, value }) {
   return (
     <div>
-      <div style={{ color: COLORS.textFaint, marginBottom: 2 }}>{label}</div>
-      <div style={{ color: COLORS.text, fontWeight: 500 }}>{value}</div>
+      <div style={{ color: COLORS.textFaint, marginBottom: 2, fontWeight: 500 }}>{label}</div>
+      <div style={{ color: COLORS.text, fontWeight: 600 }}>{value}</div>
     </div>
   );
 }
  
 function SectionLabel({ children }) {
-  return <div style={{ fontSize: 11, letterSpacing: "0.06em", textTransform: "uppercase", color: COLORS.textFaint, marginBottom: 8, fontFamily: "'IBM Plex Mono', monospace" }}>{children}</div>;
+  return <div style={{ fontSize: 11.5, color: COLORS.textFaint, marginBottom: 8, fontFamily: "'Quicksand', sans-serif", fontWeight: 700 }}>{children}</div>;
 }
  
 function OverviewTab({ overallPct, overallAttended, overallTotal, pendingAssignments, totalAssignments, doneTodos, totalTodos, subjectStats }) {
   return (
     <div>
       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(160px, 1fr))", gap: 10, marginBottom: 24 }}>
-        <MetricCard label="Overall attendance" value={`${overallPct}%`} sub={`${overallAttended}/${overallTotal} classes`} />
-        <MetricCard label="Assignments pending" value={pendingAssignments} sub={`${totalAssignments} total`} />
-        <MetricCard label="Todos done" value={`${doneTodos}/${totalTodos}`} sub="across all subjects" />
+        <MetricCard emoji="🌙" label="Overall attendance" value={`${overallPct}%`} sub={`${overallAttended}/${overallTotal} classes`} />
+        <MetricCard emoji="📝" label="Assignments pending" value={pendingAssignments} sub={`${totalAssignments} total`} />
+        <MetricCard emoji="✨" label="Todos done" value={`${doneTodos}/${totalTodos}`} sub="across all subjects" />
       </div>
  
       <SectionLabel>Subject-wise breakdown</SectionLabel>
@@ -494,10 +519,10 @@ function OverviewTab({ overallPct, overallAttended, overallTotal, pendingAssignm
         {subjectStats.map((s) => {
           const pctColor = s.pct === null ? COLORS.textFaint : s.pct >= 75 ? COLORS.present : COLORS.danger;
           return (
-            <Card key={s.subject.id} style={{ borderLeft: `3px solid ${pctColor}`, borderRadius: "6px 14px 14px 6px" }}>
+            <Card key={s.subject.id} style={{ borderLeft: `4px solid ${pctColor}`, borderRadius: "8px 20px 20px 8px" }}>
               <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 10, gap: 8, flexWrap: "wrap" }}>
-                <h3 style={{ fontFamily: "'Fraunces', serif", fontWeight: 600, fontSize: 16, margin: 0 }}><Highlight>{s.subject.name}</Highlight></h3>
-                <span style={{ fontFamily: "'IBM Plex Mono', monospace", fontSize: 13, fontWeight: 500, color: pctColor }}>{s.pct === null ? "no classes yet" : `${s.pct}%`}</span>
+                <h3 style={{ fontFamily: "'Fredoka', sans-serif", fontWeight: 600, fontSize: 16, margin: 0 }}><Highlight>{s.subject.name}</Highlight></h3>
+                <span style={{ fontFamily: "'Space Mono', monospace", fontSize: 13, fontWeight: 700, color: pctColor }}>{s.pct === null ? "no classes yet" : `${s.pct}%`}</span>
               </div>
               {s.total > 0 && (
                 <div className="att-bar-track" style={{ marginBottom: 12 }}>
@@ -513,8 +538,8 @@ function OverviewTab({ overallPct, overallAttended, overallTotal, pendingAssignm
           );
         })}
       </div>
-      <div style={{ color: COLORS.textFaint, fontSize: 12, marginTop: 14 }}>
-        Tip: mark attendance from the Calendar tab. Everything is linked by subject, so renaming a subject in Subject todos updates it everywhere.
+      <div style={{ color: COLORS.textFaint, fontSize: 12, marginTop: 14, fontWeight: 500 }}>
+        💡 mark attendance from the Calendar tab. Everything is linked by subject, so renaming a subject in Subject todos updates it everywhere.
       </div>
     </div>
   );
@@ -533,15 +558,15 @@ function ClassRow({ entry, subjects, showCheckbox, checked, onToggleCheck, onSav
  
   if (editing) {
     return (
-      <div className="att-row" style={{ display: "flex", alignItems: "center", gap: 8, background: COLORS.surface2, border: `1px solid ${COLORS.accent}`, borderRadius: 10, padding: "10px 12px", flexWrap: "wrap" }}>
+      <div className="att-row" style={{ display: "flex", alignItems: "center", gap: 8, background: COLORS.surface2, border: `1.5px solid ${COLORS.accent}`, borderRadius: 14, padding: "10px 12px", flexWrap: "wrap" }}>
         <input value={time} onChange={(e) => setTime(e.target.value)} style={{ width: 120 }} />
         <select value={subjectId || ""} onChange={(e) => setSubjectId(e.target.value)} style={{ flex: 1, minWidth: 120 }}>
           {subjects.map((s) => (
             <option key={s.id} value={s.id}>{s.name}</option>
           ))}
         </select>
-        <button onClick={save} style={{ background: COLORS.accent, border: "none", borderRadius: 8, padding: "6px 12px", color: "#2B1D08", fontSize: 12, fontWeight: 600 }}>Save</button>
-        <button onClick={() => setEditing(false)} style={{ background: "transparent", border: `1px solid ${COLORS.border}`, borderRadius: 8, padding: "6px 12px", color: COLORS.textMuted, fontSize: 12 }}>Cancel</button>
+        <button onClick={save} style={{ background: COLORS.accent, border: "none", borderRadius: 10, padding: "7px 14px", color: COLORS.ink, fontSize: 12, fontWeight: 700 }}>Save</button>
+        <button onClick={() => setEditing(false)} style={{ background: "transparent", border: `1.5px solid ${COLORS.border}`, borderRadius: 10, padding: "7px 14px", color: COLORS.textMuted, fontSize: 12 }}>Cancel</button>
       </div>
     );
   }
@@ -554,22 +579,22 @@ function ClassRow({ entry, subjects, showCheckbox, checked, onToggleCheck, onSav
         alignItems: "center",
         gap: 12,
         background: cancelled ? COLORS.cancelledDim : checked ? COLORS.presentDim : COLORS.surface2,
-        border: `1px solid ${cancelled ? COLORS.borderStrong : checked ? COLORS.present + "55" : COLORS.border}`,
-        borderRadius: 10,
+        border: `1.5px solid ${cancelled ? COLORS.borderStrong : checked ? COLORS.present + "66" : COLORS.border}`,
+        borderRadius: 14,
         padding: "10px 12px",
-        opacity: cancelled ? 0.75 : 1,
+        opacity: cancelled ? 0.8 : 1,
       }}
     >
       {showCheckbox && <Checkbox checked={checked} onClick={onToggleCheck} disabled={cancelled} />}
-      <span style={{ fontFamily: "'IBM Plex Mono', monospace", fontSize: 12, color: COLORS.textMuted, minWidth: 96 }}>{entry.time}</span>
-      <span style={{ fontSize: 14, fontWeight: 500, flex: 1, textDecoration: cancelled ? "line-through" : "none", color: cancelled ? COLORS.textFaint : COLORS.text }}>
+      <span style={{ fontFamily: "'Space Mono', monospace", fontSize: 12, color: COLORS.textMuted, minWidth: 96 }}>{entry.time}</span>
+      <span style={{ fontSize: 14, fontWeight: 600, flex: 1, textDecoration: cancelled ? "line-through" : "none", color: cancelled ? COLORS.textFaint : COLORS.text }}>
         {subjectName(subjects, entry.subjectId)}
       </span>
-      {cancelled && <span className="cancel-badge">Cancelled</span>}
+      {cancelled && <span className="cancel-badge">Cancelled 💤</span>}
       <div className="att-actions">
         {onToggleCancel && (
           <button onClick={onToggleCancel} style={{ background: "transparent", border: "none", padding: 4, display: "flex" }} aria-label={cancelled ? "Restore class" : "Cancel class"} title={cancelled ? "Restore class" : "Mark cancelled"}>
-            {cancelled ? <IconUndo /> : <IconBan />}
+            {cancelled ? <IconSun /> : <IconMoon />}
           </button>
         )}
         <button onClick={() => setEditing(true)} style={{ background: "transparent", border: "none", padding: 4, display: "flex" }} aria-label="Edit">
@@ -605,7 +630,7 @@ function AddClassForm({ subjects, onAdd }) {
           <option key={s.id} value={s.id}>{s.name}</option>
         ))}
       </select>
-      <button onClick={submit} style={{ background: COLORS.accent, border: "none", borderRadius: 8, padding: "0 14px", display: "flex", alignItems: "center", gap: 6, color: "#2B1D08", fontSize: 13, fontWeight: 600 }}>
+      <button onClick={submit} style={{ background: `linear-gradient(135deg, ${COLORS.accent}, ${COLORS.accent2})`, border: "none", borderRadius: 12, padding: "0 16px", display: "flex", alignItems: "center", gap: 6, color: COLORS.ink, fontSize: 13, fontWeight: 700 }}>
         <IconPlus /> Add
       </button>
     </div>
@@ -674,28 +699,28 @@ function CalendarTab({ data, subjects, selectedDate, setSelectedDate, entries, o
     <div className="cal-layout">
       <Card style={{ padding: "22px 20px" }}>
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 6 }}>
-          <button onClick={() => changeMonth(-1)} style={{ background: COLORS.surface2, border: `1px solid ${COLORS.border}`, borderRadius: 9, width: 34, height: 34, display: "flex", alignItems: "center", justifyContent: "center" }}>
+          <button onClick={() => changeMonth(-1)} style={{ background: COLORS.surface2, border: `1.5px solid ${COLORS.border}`, borderRadius: 12, width: 34, height: 34, display: "flex", alignItems: "center", justifyContent: "center" }}>
             <IconChevron dir="left" />
           </button>
-          <h2 style={{ fontFamily: "'Fraunces', serif", fontWeight: 600, fontSize: 21, margin: 0 }}>{monthLabel}</h2>
-          <button onClick={() => changeMonth(1)} style={{ background: COLORS.surface2, border: `1px solid ${COLORS.border}`, borderRadius: 9, width: 34, height: 34, display: "flex", alignItems: "center", justifyContent: "center" }}>
+          <h2 style={{ fontFamily: "'Fredoka', sans-serif", fontWeight: 600, fontSize: 21, margin: 0 }}>{monthLabel}</h2>
+          <button onClick={() => changeMonth(1)} style={{ background: COLORS.surface2, border: `1.5px solid ${COLORS.border}`, borderRadius: 12, width: 34, height: 34, display: "flex", alignItems: "center", justifyContent: "center" }}>
             <IconChevron dir="right" />
           </button>
         </div>
  
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 18 }}>
-          <span style={{ fontFamily: "'IBM Plex Mono', monospace", fontSize: 12, color: COLORS.textMuted }}>
+          <span style={{ fontFamily: "'Space Mono', monospace", fontSize: 12, color: COLORS.textMuted }}>
             {monthPct === null ? "no classes recorded" : `${monthAttended}/${monthTotal} attended · `}
-            {monthPct !== null && <span style={{ color: monthPct >= 75 ? COLORS.present : COLORS.danger, fontWeight: 600 }}>{monthPct}%</span>}
+            {monthPct !== null && <span style={{ color: monthPct >= 75 ? COLORS.present : COLORS.danger, fontWeight: 700 }}>{monthPct}%</span>}
           </span>
-          <button onClick={jumpToday} style={{ background: "transparent", border: `1px solid ${COLORS.border}`, borderRadius: 999, padding: "4px 12px", color: COLORS.accent, fontSize: 11.5, fontFamily: "'IBM Plex Mono', monospace" }}>
+          <button onClick={jumpToday} style={{ background: "transparent", border: `1.5px solid ${COLORS.border}`, borderRadius: 999, padding: "5px 14px", color: COLORS.accent, fontSize: 11.5, fontFamily: "'Space Mono', monospace" }}>
             jump to today
           </button>
         </div>
  
         <div style={{ display: "grid", gridTemplateColumns: "repeat(7, 1fr)", gap: 6, marginBottom: 10 }}>
           {["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"].map((d, i) => (
-            <div key={i} style={{ textAlign: "center", fontSize: 11, color: COLORS.textFaint, fontFamily: "'IBM Plex Mono', monospace", letterSpacing: "0.03em" }}>{d}</div>
+            <div key={i} style={{ textAlign: "center", fontSize: 11, color: COLORS.textFaint, fontFamily: "'Space Mono', monospace" }}>{d}</div>
           ))}
         </div>
         <div style={{ display: "grid", gridTemplateColumns: "repeat(7, 1fr)", gap: 6 }}>
@@ -707,34 +732,34 @@ function CalendarTab({ data, subjects, selectedDate, setSelectedDate, entries, o
             const info = pctForKey(key);
             let bg = "transparent";
             let textColor = COLORS.text;
-            if (isSelected) { bg = COLORS.accent; textColor = "#2B1D08"; }
+            if (isSelected) { bg = `linear-gradient(135deg, ${COLORS.accent}, ${COLORS.accent2})`; textColor = COLORS.ink; }
             return (
-              <div key={i} className={`cal-cell${isSelected ? " selected" : ""}`} onClick={() => setSelectedDate(key)} style={{ background: bg, border: isToday && !isSelected ? `1.5px solid ${COLORS.accent}` : undefined }}>
-                <span style={{ fontSize: 15, color: textColor, fontWeight: isSelected || isToday ? 700 : 500 }}>{day}</span>
+              <div key={i} className={`cal-cell${isSelected ? " selected" : ""}`} onClick={() => setSelectedDate(key)} style={{ background: bg, border: isToday && !isSelected ? `2px solid ${COLORS.accent}` : undefined }}>
+                <span style={{ fontSize: 15, color: textColor, fontWeight: isSelected || isToday ? 700 : 600 }}>{day}</span>
                 {info && !isSelected && <div className="cal-dot" style={{ background: info.pct >= 75 ? COLORS.present : COLORS.danger }} />}
               </div>
             );
           })}
         </div>
  
-        <div style={{ display: "flex", gap: 16, marginTop: 18, paddingTop: 14, borderTop: `1px solid ${COLORS.border}`, flexWrap: "wrap" }}>
-          <div style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 11.5, color: COLORS.textMuted }}>
+        <div style={{ display: "flex", gap: 16, marginTop: 18, paddingTop: 14, borderTop: `1.5px solid ${COLORS.border}`, flexWrap: "wrap" }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 11.5, color: COLORS.textMuted, fontWeight: 500 }}>
             <div className="cal-dot" style={{ background: COLORS.present }} /> 75%+ attended
           </div>
-          <div style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 11.5, color: COLORS.textMuted }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 11.5, color: COLORS.textMuted, fontWeight: 500 }}>
             <div className="cal-dot" style={{ background: COLORS.danger }} /> below 75%
           </div>
         </div>
       </Card>
  
-      <Card style={{ borderLeft: `3px solid ${COLORS.accent}`, borderRadius: "6px 14px 14px 6px", padding: "20px 20px" }}>
+      <Card style={{ borderLeft: `4px solid ${COLORS.accent}`, borderRadius: "8px 20px 20px 8px", padding: "20px 20px" }}>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 4, flexWrap: "wrap", gap: 6 }}>
           <div>
-            <h2 style={{ fontFamily: "'Fraunces', serif", fontWeight: 600, fontSize: 19, margin: 0 }}><Highlight>{selectedLabel}</Highlight></h2>
-            {isSelectedToday && <span style={{ fontSize: 11, color: COLORS.accent, fontFamily: "'IBM Plex Mono', monospace" }}>today</span>}
+            <h2 style={{ fontFamily: "'Fredoka', sans-serif", fontWeight: 600, fontSize: 19, margin: 0 }}><Highlight>{selectedLabel}</Highlight></h2>
+            {isSelectedToday && <span style={{ fontSize: 11, color: COLORS.accent, fontFamily: "'Space Mono', monospace", fontWeight: 700 }}>✨ today</span>}
           </div>
           {activeEntries.length > 0 && (
-            <span style={{ fontFamily: "'IBM Plex Mono', monospace", fontSize: 12, color: COLORS.textMuted, marginTop: 4 }}>{dayAttended}/{activeEntries.length} attended</span>
+            <span style={{ fontFamily: "'Space Mono', monospace", fontSize: 12, color: COLORS.textMuted, marginTop: 4 }}>{dayAttended}/{activeEntries.length} attended</span>
           )}
         </div>
  
@@ -745,8 +770,8 @@ function CalendarTab({ data, subjects, selectedDate, setSelectedDate, entries, o
         )}
  
         {entries.length === 0 && (
-          <div style={{ color: COLORS.textFaint, fontSize: 13, padding: "12px 0 20px" }}>
-            No classes recorded for this date yet — add one below, or check Weekly setup.
+          <div style={{ color: COLORS.textFaint, fontSize: 13, padding: "12px 0 20px", fontWeight: 500 }}>
+            🌙 no classes recorded for this date yet — add one below, or check Weekly setup.
           </div>
         )}
  
@@ -767,7 +792,7 @@ function CalendarTab({ data, subjects, selectedDate, setSelectedDate, entries, o
           ))}
         </div>
  
-        <div style={{ paddingTop: entries.length ? 14 : 0, borderTop: entries.length ? `1px solid ${COLORS.border}` : "none" }}>
+        <div style={{ paddingTop: entries.length ? 14 : 0, borderTop: entries.length ? `1.5px solid ${COLORS.border}` : "none" }}>
           <SectionLabel>Add a class for this day</SectionLabel>
           <AddClassForm subjects={subjects} onAdd={onAdd} />
         </div>
@@ -783,7 +808,7 @@ function WeeklySetupTab({ template, subjects, onAdd, onUpdate, onDelete }) {
   return (
     <div>
       <SectionLabel>Weekly timetable</SectionLabel>
-      <div style={{ color: COLORS.textFaint, fontSize: 12.5, marginBottom: 16 }}>
+      <div style={{ color: COLORS.textFaint, fontSize: 12.5, marginBottom: 16, fontWeight: 500 }}>
         Set your recurring classes for each weekday. These auto-fill the Calendar for any date that doesn't already have its own entries — edit a specific day in Calendar to override just that date.
       </div>
  
@@ -795,13 +820,13 @@ function WeeklySetupTab({ template, subjects, onAdd, onUpdate, onDelete }) {
         ))}
       </div>
  
-      <Card style={{ borderLeft: `3px solid ${COLORS.accent}`, borderRadius: "6px 14px 14px 6px" }}>
-        <h3 style={{ fontFamily: "'Fraunces', serif", fontWeight: 600, fontSize: 17, margin: "0 0 14px" }}>
+      <Card style={{ borderLeft: `4px solid ${COLORS.accent}`, borderRadius: "8px 20px 20px 8px" }}>
+        <h3 style={{ fontFamily: "'Fredoka', sans-serif", fontWeight: 600, fontSize: 17, margin: "0 0 14px" }}>
           <Highlight>{FULL_DAY[activeDay]}</Highlight>
         </h3>
  
         {classes.length === 0 && (
-          <div style={{ color: COLORS.textFaint, fontSize: 13, padding: "6px 0 16px" }}>
+          <div style={{ color: COLORS.textFaint, fontSize: 13, padding: "6px 0 16px", fontWeight: 500 }}>
             No recurring classes set for {FULL_DAY[activeDay]} yet.
           </div>
         )}
@@ -821,7 +846,7 @@ function WeeklySetupTab({ template, subjects, onAdd, onUpdate, onDelete }) {
           ))}
         </div>
  
-        <div style={{ paddingTop: classes.length ? 14 : 0, borderTop: classes.length ? `1px solid ${COLORS.border}` : "none" }}>
+        <div style={{ paddingTop: classes.length ? 14 : 0, borderTop: classes.length ? `1.5px solid ${COLORS.border}` : "none" }}>
           <AddClassForm subjects={subjects} onAdd={(time, subjectId) => onAdd(activeDay, time, subjectId)} />
         </div>
       </Card>
@@ -836,9 +861,9 @@ function AssignmentsTab({ subjects, assignments, onAdd, onToggle, onDelete }) {
   return (
     <div>
       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(160px, 1fr))", gap: 10, marginBottom: 22 }}>
-        <MetricCard label="Total assignments" value={total} />
-        <MetricCard label="Pending" value={pending} />
-        <MetricCard label="Done" value={total - pending} />
+        <MetricCard emoji="📚" label="Total assignments" value={total} />
+        <MetricCard emoji="⏳" label="Pending" value={pending} />
+        <MetricCard emoji="✅" label="Done" value={total - pending} />
       </div>
  
       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))", gap: 14, paddingBottom: 20 }}>
@@ -867,12 +892,12 @@ function SubjectAssignmentCard({ subject, assignments, onAdd, onToggle, onDelete
   return (
     <Card style={{ display: "flex", flexDirection: "column", gap: 12 }}>
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-        <h3 style={{ fontFamily: "'Fraunces', serif", fontWeight: 600, fontSize: 16, margin: 0 }}><Highlight>{subject.name}</Highlight></h3>
-        <span style={{ fontFamily: "'IBM Plex Mono', monospace", fontSize: 11, color: COLORS.textFaint }}>{done.length}/{assignments.length}</span>
+        <h3 style={{ fontFamily: "'Fredoka', sans-serif", fontWeight: 600, fontSize: 16, margin: 0 }}><Highlight>{subject.name}</Highlight></h3>
+        <span style={{ fontFamily: "'Space Mono', monospace", fontSize: 11, color: COLORS.textFaint }}>{done.length}/{assignments.length}</span>
       </div>
  
       <div className="att-scroll" style={{ display: "flex", flexDirection: "column", gap: 6, maxHeight: 220, overflowY: "auto" }}>
-        {assignments.length === 0 && <div style={{ color: COLORS.textFaint, fontSize: 12.5 }}>No assignments yet.</div>}
+        {assignments.length === 0 && <div style={{ color: COLORS.textFaint, fontSize: 12.5, fontWeight: 500 }}>No assignments yet.</div>}
         {pending.map((a) => <AssignmentRow key={a.id} a={a} onToggle={onToggle} onDelete={onDelete} />)}
         {done.map((a) => <AssignmentRow key={a.id} a={a} onToggle={onToggle} onDelete={onDelete} />)}
       </div>
@@ -880,7 +905,7 @@ function SubjectAssignmentCard({ subject, assignments, onAdd, onToggle, onDelete
       <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
         <input placeholder="Add assignment" value={title} onChange={(e) => setTitle(e.target.value)} onKeyDown={(e) => e.key === "Enter" && submit()} style={{ flex: 1, minWidth: 110 }} />
         <input type="date" value={due} onChange={(e) => setDue(e.target.value)} style={{ width: 130 }} />
-        <button onClick={submit} style={{ background: COLORS.surface2, border: `1px solid ${COLORS.border}`, borderRadius: 8, padding: "0 12px", color: COLORS.accent, display: "flex", alignItems: "center" }} aria-label="Add assignment">
+        <button onClick={submit} style={{ background: COLORS.surface2, border: `1.5px solid ${COLORS.border}`, borderRadius: 12, padding: "0 12px", color: COLORS.accent, display: "flex", alignItems: "center" }} aria-label="Add assignment">
           <IconPlus color={COLORS.accent} />
         </button>
       </div>
@@ -890,11 +915,11 @@ function SubjectAssignmentCard({ subject, assignments, onAdd, onToggle, onDelete
  
 function AssignmentRow({ a, onToggle, onDelete }) {
   return (
-    <div className="att-row" style={{ display: "flex", alignItems: "center", gap: 10, background: COLORS.surface2, border: `1px solid ${COLORS.border}`, borderRadius: 8, padding: "8px 10px" }}>
+    <div className="att-row" style={{ display: "flex", alignItems: "center", gap: 10, background: COLORS.surface2, border: `1.5px solid ${COLORS.border}`, borderRadius: 12, padding: "8px 10px" }}>
       <Checkbox checked={a.done} onClick={() => onToggle(a.id)} />
       <div style={{ flex: 1, minWidth: 0 }}>
-        <div style={{ fontSize: 13, fontWeight: 500, color: a.done ? COLORS.textFaint : COLORS.text, textDecoration: a.done ? "line-through" : "none" }}>{a.title}</div>
-        {a.due && <div style={{ fontSize: 11, color: COLORS.textMuted, marginTop: 1, fontFamily: "'IBM Plex Mono', monospace" }}>due {a.due}</div>}
+        <div style={{ fontSize: 13, fontWeight: 600, color: a.done ? COLORS.textFaint : COLORS.text, textDecoration: a.done ? "line-through" : "none" }}>{a.title}</div>
+        {a.due && <div style={{ fontSize: 11, color: COLORS.textMuted, marginTop: 1, fontFamily: "'Space Mono', monospace" }}>due {a.due}</div>}
       </div>
       <button className="att-del" onClick={() => onDelete(a.id)} style={{ background: "transparent", border: "none", padding: 4, display: "flex" }} aria-label="Delete assignment">
         <IconTrash />
@@ -933,21 +958,21 @@ function SubjectCard({ subject, onRename, onAddTodo, onToggleTodo, onDeleteTodo 
     <Card style={{ display: "flex", flexDirection: "column", gap: 12 }}>
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8 }}>
         {editing ? (
-          <input autoFocus value={nameVal} onChange={(e) => setNameVal(e.target.value)} onBlur={commitName} onKeyDown={(e) => e.key === "Enter" && commitName()} style={{ flex: 1, fontFamily: "'Fraunces', serif", fontWeight: 600, fontSize: 15 }} />
+          <input autoFocus value={nameVal} onChange={(e) => setNameVal(e.target.value)} onBlur={commitName} onKeyDown={(e) => e.key === "Enter" && commitName()} style={{ flex: 1, fontFamily: "'Fredoka', sans-serif", fontWeight: 600, fontSize: 15 }} />
         ) : (
-          <h3 onClick={() => setEditing(true)} style={{ fontFamily: "'Fraunces', serif", fontWeight: 600, fontSize: 16, margin: 0, cursor: "text", flex: 1 }} title="Click to rename">
+          <h3 onClick={() => setEditing(true)} style={{ fontFamily: "'Fredoka', sans-serif", fontWeight: 600, fontSize: 16, margin: 0, cursor: "text", flex: 1 }} title="Click to rename">
             <Highlight>{subject.name}</Highlight>
           </h3>
         )}
-        <span style={{ fontFamily: "'IBM Plex Mono', monospace", fontSize: 11, color: COLORS.textFaint }}>{done}/{subject.todos.length}</span>
+        <span style={{ fontFamily: "'Space Mono', monospace", fontSize: 11, color: COLORS.textFaint }}>{done}/{subject.todos.length}</span>
       </div>
  
       <div className="att-scroll" style={{ display: "flex", flexDirection: "column", gap: 6, maxHeight: 200, overflowY: "auto" }}>
-        {subject.todos.length === 0 && <div style={{ color: COLORS.textFaint, fontSize: 12.5 }}>No to-dos yet.</div>}
+        {subject.todos.length === 0 && <div style={{ color: COLORS.textFaint, fontSize: 12.5, fontWeight: 500 }}>No to-dos yet.</div>}
         {subject.todos.map((t) => (
           <div key={t.id} className="att-row" style={{ display: "flex", alignItems: "center", gap: 10 }}>
             <Checkbox checked={t.done} onClick={() => onToggleTodo(t.id)} />
-            <span style={{ fontSize: 13, flex: 1, color: t.done ? COLORS.textFaint : COLORS.text, textDecoration: t.done ? "line-through" : "none" }}>{t.text}</span>
+            <span style={{ fontSize: 13, flex: 1, color: t.done ? COLORS.textFaint : COLORS.text, textDecoration: t.done ? "line-through" : "none", fontWeight: 500 }}>{t.text}</span>
             <button className="att-del" onClick={() => onDeleteTodo(t.id)} style={{ background: "transparent", border: "none", padding: 2, display: "flex" }} aria-label="Delete todo">
               <IconTrash />
             </button>
@@ -957,7 +982,7 @@ function SubjectCard({ subject, onRename, onAddTodo, onToggleTodo, onDeleteTodo 
  
       <div style={{ display: "flex", gap: 6 }}>
         <input placeholder="Add a to-do" value={text} onChange={(e) => setText(e.target.value)} onKeyDown={(e) => e.key === "Enter" && submitTodo()} style={{ flex: 1 }} />
-        <button onClick={submitTodo} style={{ background: COLORS.surface2, border: `1px solid ${COLORS.border}`, borderRadius: 8, padding: "0 12px", color: COLORS.accent, display: "flex", alignItems: "center" }} aria-label="Add todo">
+        <button onClick={submitTodo} style={{ background: COLORS.surface2, border: `1.5px solid ${COLORS.border}`, borderRadius: 12, padding: "0 12px", color: COLORS.accent, display: "flex", alignItems: "center" }} aria-label="Add todo">
           <IconPlus color={COLORS.accent} />
         </button>
       </div>
