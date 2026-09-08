@@ -199,6 +199,11 @@ function subjectName(subjects, id) {
   const s = subjects.find((s) => s.id === id);
   return s ? s.name : "Unknown subject";
 }
+
+// strips a trailing "lab" word from a subject name, e.g. "DBMS Lab" -> "DBMS"
+function baseSubjectName(name) {
+  return String(name || "").replace(/\s*\(?\blab\)?\s*$/i, "").trim();
+}
  
 function getEntriesForDate(data, key) {
   if (data.records[key]) return data.records[key].entries;
@@ -367,14 +372,39 @@ export default function App() {
   const totalTodos = data.subjects.reduce((s, sub) => s + sub.todos.length, 0);
   const doneTodos = data.subjects.reduce((s, sub) => s + sub.todos.filter((t) => t.done).length, 0);
  
-  const subjectStats = data.subjects.map((s) => {
-    const entries = allRecordedEntries.filter((e) => e.subjectId === s.id);
+  // group subjects by base name so a "X" theory subject and its "X Lab" combine into one card
+  const subjectGroups = useMemo(() => {
+    const groups = new Map();
+    data.subjects.forEach((s) => {
+      const base = baseSubjectName(s.name) || s.name;
+      const key = base.toLowerCase();
+      if (!groups.has(key)) groups.set(key, { base, members: [] });
+      groups.get(key).members.push(s);
+    });
+    return Array.from(groups.values());
+  }, [data.subjects]);
+
+  const subjectStats = subjectGroups.map(({ base, members }) => {
+    const memberIds = members.map((m) => m.id);
+    const displayName = members.length > 1 ? base : members[0].name;
+    const entries = allRecordedEntries.filter((e) => memberIds.includes(e.subjectId));
     const attended = entries.filter((e) => e.attended).length;
     const total = entries.length;
     const pct = total ? Math.round((attended / total) * 100) : null;
-    const assignments = data.assignments.filter((a) => a.subjectId === s.id);
+    const assignments = data.assignments.filter((a) => memberIds.includes(a.subjectId));
     const doneA = assignments.filter((a) => a.done).length;
-    return { subject: s, total, attended, pct, totalA: assignments.length, doneA, todosDone: s.todos.filter((t) => t.done).length, todosTotal: s.todos.length };
+    const todosDone = members.reduce((sum, m) => sum + m.todos.filter((t) => t.done).length, 0);
+    const todosTotal = members.reduce((sum, m) => sum + m.todos.length, 0);
+    return {
+      subject: { ...members[0], id: members.map((m) => m.id).join("+"), name: displayName },
+      total,
+      attended,
+      pct,
+      totalA: assignments.length,
+      doneA,
+      todosDone,
+      todosTotal,
+    };
   });
  
   const selectedEntries = data.records[selectedDate] ? data.records[selectedDate].entries : getEntriesForDate(data, selectedDate);
