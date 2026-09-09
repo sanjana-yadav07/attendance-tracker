@@ -340,6 +340,20 @@ export default function App() {
   const renameSubject = (id, name) => {
     setData((d) => ({ ...d, subjects: d.subjects.map((s) => (s.id === id ? { ...s, name } : s)) }));
   };
+  const addSubject = (name) => {
+    const trimmed = (name || "").trim();
+    if (!trimmed) return;
+    setData((d) => ({ ...d, subjects: [...d.subjects, { id: uid(), name: trimmed, todos: [] }] }));
+  };
+  const deleteSubject = (id) => {
+    setData((d) => ({
+      ...d,
+      subjects: d.subjects.filter((s) => s.id !== id),
+      assignments: d.assignments.filter((a) => a.subjectId !== id),
+      template: Object.fromEntries(DAYS.map((day) => [day, (d.template[day] || []).filter((c) => c.subjectId !== id)])),
+      records: Object.fromEntries(Object.entries(d.records).map(([date, r]) => [date, { ...r, entries: r.entries.filter((e) => e.subjectId !== id) }])),
+    }));
+  };
   const addTodo = (subjectId, text) => {
     if (!text.trim()) return;
     setData((d) => ({ ...d, subjects: d.subjects.map((s) => (s.id === subjectId ? { ...s, todos: [...s.todos, { id: uid(), text: text.trim(), done: false }] } : s)) }));
@@ -485,7 +499,7 @@ export default function App() {
           <AssignmentsTab subjects={data.subjects} assignments={data.assignments} onAdd={addAssignment} onToggle={toggleAssignment} onDelete={deleteAssignment} />
         )}
         {tab === "subjects" && (
-          <SubjectsTab subjects={data.subjects} onRename={renameSubject} onAddTodo={addTodo} onToggleTodo={toggleTodo} onDeleteTodo={deleteTodo} />
+          <SubjectsTab subjects={data.subjects} onRename={renameSubject} onAdd={addSubject} onDelete={deleteSubject} onAddTodo={addTodo} onToggleTodo={toggleTodo} onDeleteTodo={deleteTodo} />
         )}
       </div>
     </div>
@@ -958,17 +972,48 @@ function AssignmentRow({ a, onToggle, onDelete }) {
   );
 }
  
-function SubjectsTab({ subjects, onRename, onAddTodo, onToggleTodo, onDeleteTodo }) {
+function SubjectsTab({ subjects, onRename, onAdd, onDelete, onAddTodo, onToggleTodo, onDeleteTodo }) {
+  const [newName, setNewName] = useState("");
+  const submitNew = () => {
+    if (!newName.trim()) return;
+    onAdd(newName);
+    setNewName("");
+  };
   return (
-    <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(260px, 1fr))", gap: 14, paddingBottom: 20 }}>
-      {subjects.map((s) => (
-        <SubjectCard key={s.id} subject={s} onRename={(name) => onRename(s.id, name)} onAddTodo={(text) => onAddTodo(s.id, text)} onToggleTodo={(tid) => onToggleTodo(s.id, tid)} onDeleteTodo={(tid) => onDeleteTodo(s.id, tid)} />
-      ))}
+    <div style={{ display: "flex", flexDirection: "column", gap: 14, paddingBottom: 20 }}>
+      <Card style={{ display: "flex", gap: 8, alignItems: "center" }}>
+        <input
+          placeholder="New subject name (e.g. DBMS or DBMS Lab)"
+          value={newName}
+          onChange={(e) => setNewName(e.target.value)}
+          onKeyDown={(e) => e.key === "Enter" && submitNew()}
+          style={{ flex: 1 }}
+        />
+        <button
+          onClick={submitNew}
+          style={{ background: COLORS.surface2, border: `1.5px solid ${COLORS.border}`, borderRadius: 12, padding: "0 14px", height: 38, color: COLORS.accent, display: "flex", alignItems: "center", gap: 6, fontWeight: 700, fontSize: 13, whiteSpace: "nowrap" }}
+        >
+          <IconPlus color={COLORS.accent} /> Add subject
+        </button>
+      </Card>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(260px, 1fr))", gap: 14 }}>
+        {subjects.map((s) => (
+          <SubjectCard
+            key={s.id}
+            subject={s}
+            onRename={(name) => onRename(s.id, name)}
+            onDelete={() => onDelete(s.id)}
+            onAddTodo={(text) => onAddTodo(s.id, text)}
+            onToggleTodo={(tid) => onToggleTodo(s.id, tid)}
+            onDeleteTodo={(tid) => onDeleteTodo(s.id, tid)}
+          />
+        ))}
+      </div>
     </div>
   );
 }
  
-function SubjectCard({ subject, onRename, onAddTodo, onToggleTodo, onDeleteTodo }) {
+function SubjectCard({ subject, onRename, onDelete, onAddTodo, onToggleTodo, onDeleteTodo }) {
   const [editing, setEditing] = useState(false);
   const [nameVal, setNameVal] = useState(subject.name);
   const [text, setText] = useState("");
@@ -980,6 +1025,11 @@ function SubjectCard({ subject, onRename, onAddTodo, onToggleTodo, onDeleteTodo 
   const submitTodo = () => {
     onAddTodo(text);
     setText("");
+  };
+  const handleDelete = () => {
+    if (window.confirm(`Delete "${subject.name}"? This also removes its attendance records, assignments, and todos.`)) {
+      onDelete();
+    }
   };
  
   const done = subject.todos.filter((t) => t.done).length;
@@ -995,6 +1045,9 @@ function SubjectCard({ subject, onRename, onAddTodo, onToggleTodo, onDeleteTodo 
           </h3>
         )}
         <span style={{ fontFamily: "'Space Mono', monospace", fontSize: 11, color: COLORS.textFaint }}>{done}/{subject.todos.length}</span>
+        <button className="att-del" onClick={handleDelete} style={{ background: "transparent", border: "none", padding: 2, display: "flex" }} aria-label="Delete subject">
+          <IconTrash />
+        </button>
       </div>
  
       <div className="att-scroll" style={{ display: "flex", flexDirection: "column", gap: 6, maxHeight: 200, overflowY: "auto" }}>
